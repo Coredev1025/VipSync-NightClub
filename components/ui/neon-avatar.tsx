@@ -203,25 +203,9 @@ export function ProfileAvatar({ level, role, ...props }: ProfileAvatarProps) {
       
       {/* Level badge */}
       {level && (
-        <motion.div
-          initial={{ scale: 0 }}
-          animate={{ scale: 1 }}
-          className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-neon-pink to-neon-purple text-xs font-bold text-white glow-pink"
-        >
+        <div className="absolute -bottom-2 left-1/2 -translate-x-1/2 px-3 py-0.5 rounded-full bg-gradient-to-r from-neon-pink to-neon-purple text-xs font-bold text-white glow-pink whitespace-nowrap z-30 pointer-events-none">
           LVL {level}
-        </motion.div>
-      )}
-      
-      {/* Role badge */}
-      {role && (
-        <motion.div
-          initial={{ opacity: 0, y: 10 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.3 }}
-          className="absolute -bottom-8 left-1/2 -translate-x-1/2 whitespace-nowrap text-xs text-muted-foreground font-medium"
-        >
-          {role}
-        </motion.div>
+        </div>
       )}
     </div>
   )

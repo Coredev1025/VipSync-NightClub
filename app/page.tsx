@@ -5,6 +5,7 @@ import { AnimatePresence } from "framer-motion"
 import { SplashScreen } from "@/components/splash-screen"
 import { AuthScreen } from "@/components/auth/auth-screen"
 import { AppShell } from "@/components/app-shell"
+import { MobileFrame } from "@/components/mobile-frame"
 
 type AppState = "splash" | "auth" | "app"
 
@@ -39,18 +40,20 @@ export default function Home() {
   }
 
   return (
-    <main className="min-h-screen bg-background">
-      <AnimatePresence mode="wait">
-        {appState === "splash" && (
-          <SplashScreen key="splash" onComplete={handleSplashComplete} />
-        )}
-        {appState === "auth" && (
-          <AuthScreen key="auth" onComplete={handleAuthComplete} />
-        )}
-        {appState === "app" && (
-          <AppShell key="app" onLogout={handleLogout} />
-        )}
-      </AnimatePresence>
-    </main>
+    <MobileFrame>
+      <main className="absolute inset-0 w-full h-full overflow-hidden rounded-[3rem]">
+        <AnimatePresence mode="wait">
+          {appState === "splash" && (
+            <SplashScreen key="splash" onComplete={handleSplashComplete} />
+          )}
+          {appState === "auth" && (
+            <AuthScreen key="auth" onComplete={handleAuthComplete} />
+          )}
+          {appState === "app" && (
+            <AppShell key="app" onLogout={handleLogout} />
+          )}
+        </AnimatePresence>
+      </main>
+    </MobileFrame>
   )
 }

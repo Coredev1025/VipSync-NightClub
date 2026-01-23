@@ -478,7 +478,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
   }
 
   return (
-    <div className="fixed inset-0 z-40 flex flex-col items-center justify-center bg-background p-6 overflow-hidden">
+    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background p-6 overflow-hidden pt-12 pb-16 rounded-[3rem]">
       {/* Background image */}
       <div 
         className="absolute inset-0 bg-cover bg-center opacity-20 z-0"

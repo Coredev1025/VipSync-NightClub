@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { MessageSquare, Map, Activity, User, Bell, Search, X, Sparkles, LogOut, Settings } from "lucide-react"
+import { MessageSquare, Map, Activity, User, Bell, Search, X, Sparkles, LogOut } from "lucide-react"
 import { Badge } from "@/components/ui/badge"
 import { ChatsTab } from "@/components/tabs/chats-tab"
 import { MapTab } from "@/components/tabs/map-tab"
@@ -51,7 +51,7 @@ export function AppShell({ onLogout }: AppShellProps) {
   }
 
   return (
-    <div className="fixed inset-0 flex flex-col bg-background overflow-hidden">
+    <div className="absolute inset-0 flex flex-col bg-background overflow-hidden rounded-[3rem]">
       {/* Animated background gradients */}
       <div className="absolute inset-0 pointer-events-none">
         <motion.div
@@ -78,7 +78,7 @@ export function AppShell({ onLogout }: AppShellProps) {
       <motion.header 
         initial={{ y: -50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-between px-4 py-3 border-b border-border glass-card-strong"
+        className="relative z-20 flex items-center justify-between px-4 py-3 pt-12 border-b border-border glass-card-strong rounded-t-[3rem] overflow-hidden"
       >
         <VIPsyncLogoCompact />
 
@@ -111,13 +111,12 @@ export function AppShell({ onLogout }: AppShellProps) {
             />
           </motion.button>
           
-          {/* User avatar with dropdown */}
+          {/* User avatar with dropdown menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <motion.button
-                whileHover={{ scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-                className="rounded-full focus:outline-none focus:ring-2 focus:ring-neon-pink/50"
+              <button 
+                className="outline-none focus:outline-none focus:ring-0 border-0 bg-transparent p-0 cursor-pointer"
+                aria-label="User menu"
               >
                 <NeonAvatar
                   src="/images/avatars/man1.png"
@@ -127,24 +126,27 @@ export function AppShell({ onLogout }: AppShellProps) {
                   status="online"
                   showRing
                 />
-              </motion.button>
+              </button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="glass-card-strong border-border min-w-[180px]">
+            <DropdownMenuContent 
+              align="end" 
+              className="w-56 glass-card-strong border-border z-[200]"
+            >
               <DropdownMenuItem
-                onClick={() => setActiveTab("profile")}
-                className="cursor-pointer"
+                onSelect={() => setActiveTab("profile")}
+                className="cursor-pointer focus:bg-neon-pink/10 focus:text-neon-pink"
               >
-                <User className="h-4 w-4" />
+                <User className="mr-2 h-4 w-4" />
                 <span>Profile</span>
               </DropdownMenuItem>
-              <DropdownMenuSeparator />
+              <DropdownMenuSeparator className="bg-border" />
               <DropdownMenuItem
-                onClick={onLogout}
+                onSelect={onLogout}
                 variant="destructive"
-                className="cursor-pointer"
+                className="cursor-pointer focus:bg-destructive/20 focus:text-destructive"
               >
-                <LogOut className="h-4 w-4" />
-                <span>Log Out</span>
+                <LogOut className="mr-2 h-4 w-4" />
+                <span>Logout</span>
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
@@ -227,7 +229,7 @@ export function AppShell({ onLogout }: AppShellProps) {
       </AnimatePresence>
 
       {/* Main Content */}
-      <main className="flex-1 overflow-hidden relative z-10">
+      <main className="flex-1 overflow-hidden relative z-10 rounded-none">
         <AnimatePresence mode="wait">
           <motion.div
             key={activeTab}
@@ -246,7 +248,7 @@ export function AppShell({ onLogout }: AppShellProps) {
       <motion.nav 
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-around px-2 py-2 border-t border-border glass-card-strong safe-area-bottom"
+        className="relative z-20 flex items-center justify-around px-2 py-2 pb-16 border-t border-border glass-card-strong safe-area-bottom rounded-b-[3rem] overflow-hidden"
       >
         {tabs.map((tab, index) => {
           const isActive = activeTab === tab.id

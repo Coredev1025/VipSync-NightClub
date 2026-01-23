@@ -145,7 +145,6 @@ export function ProfileTab({ onLogout }: ProfileTabProps) {
               fallback="JD"
               glow="pink"
               level={3}
-              role="Elite Promoter"
             />
             <motion.div 
               initial={{ opacity: 0, x: -20 }}

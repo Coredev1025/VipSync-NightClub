@@ -52,7 +52,7 @@ export function SplashScreen({ onComplete }: SplashScreenProps) {
         animate={{ opacity: 1 }}
         exit={{ opacity: 0, scale: 1.1 }}
         transition={{ duration: 0.5 }}
-        className="fixed inset-0 z-50 flex flex-col items-center justify-center bg-background overflow-hidden"
+        className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-background overflow-hidden pt-12 pb-16 rounded-[3rem]"
       >
         {/* Nightclub Background Image */}
         <div 
