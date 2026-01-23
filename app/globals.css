@@ -199,17 +199,24 @@
   }
   .text-glow-pink {
     text-shadow: 
-      0 0 5px oklch(0.72 0.28 330 / 1),
-      0 0 10px oklch(0.72 0.28 330 / 0.8),
-      0 0 20px oklch(0.72 0.28 330 / 0.6),
-      0 0 40px oklch(0.72 0.28 330 / 0.4);
+      0 0 2px oklch(0.72 0.28 330 / 0.3),
+      0 0 4px oklch(0.72 0.28 330 / 0.2);
   }
   .text-glow-cyan {
     text-shadow: 
-      0 0 5px oklch(0.78 0.18 200 / 1),
-      0 0 10px oklch(0.78 0.18 200 / 0.8),
-      0 0 20px oklch(0.78 0.18 200 / 0.6),
-      0 0 40px oklch(0.78 0.18 200 / 0.4);
+      0 0 2px oklch(0.78 0.18 200 / 0.3),
+      0 0 4px oklch(0.78 0.18 200 / 0.2);
+  }
+  /* Very weak dark mode text glows */
+  .dark .text-glow-pink {
+    text-shadow: 
+      0 0 3px oklch(0.75 0.28 330 / 0.4),
+      0 0 6px oklch(0.75 0.28 330 / 0.25);
+  }
+  .dark .text-glow-cyan {
+    text-shadow: 
+      0 0 3px oklch(0.8 0.22 200 / 0.4),
+      0 0 6px oklch(0.8 0.22 200 / 0.25);
   }
   .text-glow-green {
     text-shadow: 
@@ -269,6 +276,44 @@
       0 0 0 2px oklch(0.78 0.18 200 / 0.8),
       0 0 15px oklch(0.78 0.18 200 / 0.5),
       0 0 30px oklch(0.78 0.18 200 / 0.3);
+  }
+  /* Input glow effects for better visibility */
+  .input-glow {
+    box-shadow: 
+      0 0 10px oklch(0.65 0.28 330 / 0.5),
+      0 0 20px oklch(0.65 0.28 330 / 0.3),
+      inset 0 0 8px oklch(0.65 0.28 330 / 0.15);
+  }
+  .input-glow-cyan {
+    box-shadow: 
+      0 0 10px oklch(0.7 0.18 200 / 0.6),
+      0 0 20px oklch(0.7 0.18 200 / 0.4),
+      inset 0 0 8px oklch(0.7 0.18 200 / 0.2);
+  }
+  .input-glow-primary {
+    box-shadow: 
+      0 0 10px oklch(0.65 0.28 330 / 0.5),
+      0 0 20px oklch(0.65 0.28 330 / 0.3),
+      inset 0 0 8px oklch(0.65 0.28 330 / 0.15);
+  }
+  /* Dark mode input glows */
+  .dark .input-glow {
+    box-shadow: 
+      0 0 12px oklch(0.7 0.28 330 / 0.6),
+      0 0 24px oklch(0.7 0.28 330 / 0.4),
+      inset 0 0 10px oklch(0.7 0.28 330 / 0.2);
+  }
+  .dark .input-glow-cyan {
+    box-shadow: 
+      0 0 12px oklch(0.7 0.22 200 / 0.7),
+      0 0 24px oklch(0.7 0.22 200 / 0.5),
+      inset 0 0 10px oklch(0.7 0.22 200 / 0.25);
+  }
+  .dark .input-glow-primary {
+    box-shadow: 
+      0 0 12px oklch(0.7 0.28 330 / 0.6),
+      0 0 24px oklch(0.7 0.28 330 / 0.4),
+      inset 0 0 10px oklch(0.7 0.28 330 / 0.2);
   }
   .avatar-glow-green {
     box-shadow: 

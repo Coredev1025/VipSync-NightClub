@@ -248,7 +248,7 @@ export function AppShell({ onLogout }: AppShellProps) {
       <motion.nav 
         initial={{ y: 50, opacity: 0 }}
         animate={{ y: 0, opacity: 1 }}
-        className="relative z-20 flex items-center justify-around px-2 py-2 pb-16 border-t border-border glass-card-strong safe-area-bottom rounded-b-[3rem] overflow-hidden"
+        className="relative z-20 flex items-center justify-around px-2 py-2 pb-16 glass-card-strong safe-area-bottom rounded-b-[3rem] overflow-hidden"
       >
         {tabs.map((tab, index) => {
           const isActive = activeTab === tab.id

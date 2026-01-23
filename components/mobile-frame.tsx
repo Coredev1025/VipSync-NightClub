@@ -9,8 +9,8 @@ interface MobileFrameProps {
 export function MobileFrame({ children }: MobileFrameProps) {
   return (
     <div className="fixed inset-0 flex items-center justify-center bg-white p-4 md:p-8 overflow-auto">
-      {/* Phone Frame Container - Increased size */}
-      <div className="relative w-full max-w-[500px] h-[1080px] max-h-[95vh] mx-auto my-auto flex-shrink-0">
+      {/* Phone Frame Container - Mobile device size (375px width) */}
+      <div className="relative w-[375px] h-[812px] max-h-[95vh] mx-auto my-auto flex-shrink-0">
         {/* Phone Frame Bezel - Modern black smartphone design */}
         <div className="absolute inset-0 rounded-[3.5rem] bg-gradient-to-b from-gray-900 via-black to-gray-900 shadow-[0_0_80px_rgba(0,0,0,0.9),0_30px_100px_rgba(0,0,0,0.7)] border-[12px] border-black overflow-hidden">
           {/* Top speaker/notch area */}

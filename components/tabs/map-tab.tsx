@@ -18,9 +18,7 @@ import {
   Mic,
   Navigation,
   Sparkles,
-  Zap,
-  Eye,
-  EyeOff
+  Zap
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -63,7 +61,7 @@ const mockTables: Table[] = [
 const entrancePos = { x: 50, y: 95 }
 
 // Bar position
-const barPos = { x: 88, y: 45 }
+const barPos = { x: 88, y: 50 }
 
 const statusColors: Record<TableStatus, { bg: string; border: string; text: string; glow: string }> = {
   open: { bg: "bg-neon-green/20", border: "border-neon-green", text: "text-neon-green", glow: "glow-green" },
@@ -124,15 +122,6 @@ export function MapTab() {
         </div>
 
         <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowPath(!showPath)}
-            className={`border-border bg-transparent ${showPath ? "text-neon-cyan" : ""}`}
-          >
-            {showPath ? <Eye className="h-4 w-4 mr-1" /> : <EyeOff className="h-4 w-4 mr-1" />}
-            Path
-          </Button>
           <Button
             size="sm"
             variant="outline"
@@ -336,12 +325,13 @@ function MapView({
         initial={{ opacity: 0, x: 20 }}
         animate={{ opacity: 1, x: 0 }}
         transition={{ delay: 0.7 }}
-        className="absolute right-3 top-[45%] -translate-y-1/2"
+        style={{ left: `${barPos.x}%`, top: `${barPos.y}%` }}
+        className="absolute -translate-x-1/2 -translate-y-1/2"
       >
-        <div className="px-3 py-2 rounded-lg glass-card neon-border-cyan">
-          <div className="flex items-center gap-2">
+        <div className="px-2 py-3 rounded-lg glass-card neon-border-cyan">
+          <div className="flex flex-col items-center gap-2">
             <Wine className="h-4 w-4 text-neon-cyan animate-bounce-subtle" />
-            <span className="text-xs text-neon-cyan uppercase tracking-wider font-semibold">Bar</span>
+            <span className="text-xs text-neon-cyan uppercase tracking-wider font-semibold" style={{ writingMode: 'vertical-rl' }}>Bar</span>
           </div>
         </div>
       </motion.div>
@@ -444,15 +434,18 @@ function MapView({
         initial={{ opacity: 0, y: 20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 1 }}
-        className="absolute bottom-16 left-4 right-4 flex justify-center gap-3 flex-wrap"
+        className="absolute top-2 left-4 right-4 flex justify-center gap-3 flex-nowrap overflow-x-auto"
       >
         {Object.entries(statusLabels).map(([status, label]) => (
           <motion.div 
-            key={status} 
-            whileHover={{ scale: 1.1 }}
-            className={`flex items-center gap-1.5 px-2 py-1 rounded-full ${statusColors[status as TableStatus].bg} border ${statusColors[status as TableStatus].border}`}
+            key={status}
+            className={`flex items-center gap-1.5 px-2 py-1 rounded-full whitespace-nowrap flex-shrink-0 transition-colors ${statusColors[status as TableStatus].bg} border ${statusColors[status as TableStatus].border} ${
+              status === 'open' ? 'hover:bg-neon-green/40 hover:border-neon-green' :
+              status === 'occupied' ? 'hover:bg-neon-pink/40 hover:border-neon-pink' :
+              status === 'pending' ? 'hover:bg-neon-orange/40 hover:border-neon-orange' :
+              'hover:bg-neon-cyan/40 hover:border-neon-cyan'
+            }`}
           >
-            <div className={`w-2 h-2 rounded-full ${statusColors[status as TableStatus].border} border-2`} />
             <span className={`text-[10px] ${statusColors[status as TableStatus].text} font-medium`}>{label}</span>
           </motion.div>
         ))}

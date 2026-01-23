@@ -198,30 +198,32 @@ export function ChatsTab() {
         initial={{ opacity: 0, y: -10 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ delay: 0.1 }}
-        className="px-4 pb-3 flex gap-2 relative z-10"
+        className="px-4 pb-3 flex flex-col gap-2 relative z-10"
       >
         <Button 
           size="sm" 
-          className="bg-neon-pink/20 text-neon-pink border border-neon-pink/30 hover:bg-neon-pink/30 rounded-full glow-pink"
+          className="bg-neon-pink/20 text-neon-pink border border-neon-pink/30 hover:bg-neon-pink/30 rounded-full glow-pink w-fit"
         >
           <Plus className="h-4 w-4 mr-1" />
           New Chat
         </Button>
-        {["all", "groups", "unread"].map((filter) => (
-          <Button 
-            key={filter}
-            size="sm" 
-            variant="outline" 
-            onClick={() => setActiveFilter(filter as typeof activeFilter)}
-            className={`border-border rounded-full capitalize ${
-              activeFilter === filter 
-                ? "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/30" 
-                : "bg-transparent"
-            }`}
-          >
-            {filter}
-          </Button>
-        ))}
+        <div className="flex gap-2">
+          {["all", "groups", "unread"].map((filter) => (
+            <Button 
+              key={filter}
+              size="sm" 
+              variant="outline" 
+              onClick={() => setActiveFilter(filter as typeof activeFilter)}
+              className={`border-border rounded-full capitalize ${
+                activeFilter === filter 
+                  ? "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/30" 
+                  : "bg-transparent"
+              }`}
+            >
+              {filter}
+            </Button>
+          ))}
+        </div>
       </motion.div>
 
       {/* Chat List */}

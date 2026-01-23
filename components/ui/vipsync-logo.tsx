@@ -132,14 +132,14 @@ export function VIPsyncLogo({ size = "md", animate = true, showTagline = false }
         >
           <span className="relative">
             <motion.span
-              className="text-neon-pink text-glow-pink drop-shadow-[0_0_20px_rgba(255,0,150,0.8)]"
+              className="text-neon-pink text-glow-pink"
               animate={animate ? { opacity: [1, 0.9, 1] } : {}}
               transition={{ duration: 3, repeat: Infinity }}
             >
               VIP
             </motion.span>
             <motion.span
-              className="text-neon-cyan text-glow-cyan drop-shadow-[0_0_20px_rgba(0,255,255,0.8)]"
+              className="text-neon-cyan text-glow-cyan"
               animate={animate ? { opacity: [1, 0.9, 1] } : {}}
               transition={{ duration: 3, repeat: Infinity, delay: 0.5 }}
             >

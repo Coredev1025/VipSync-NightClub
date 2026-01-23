@@ -425,8 +425,8 @@ function StatCard({
   }
 
   return (
-    <motion.div whileHover={{ scale: 1.05, y: -2 }}>
-      <Card className={`p-4 glass-card border ${colorClasses[color]} text-center relative overflow-hidden`}>
+    <motion.div whileHover={{ scale: 1.05, y: -2 }} className="w-full">
+      <Card className={`w-full h-32 p-4 glass-card border ${colorClasses[color]} text-center relative overflow-hidden flex flex-col justify-between items-center`}>
         <motion.div
           className="absolute inset-0 opacity-30"
           animate={{ backgroundPosition: ["0% 0%", "100% 100%"] }}
@@ -435,14 +435,16 @@ function StatCard({
             background: `radial-gradient(circle at center, var(--neon-${color}) 0%, transparent 70%)`,
           }}
         />
-        <div className={`flex justify-center mb-2 relative ${colorClasses[color].split(" ")[0]}`}>
+        <div className={`flex justify-center relative ${colorClasses[color].split(" ")[0]}`}>
           {icon}
         </div>
-        <p className="text-2xl font-bold relative">{value}</p>
-        {trend && (
-          <span className="text-xs text-neon-green font-semibold">{trend}</span>
-        )}
-        <p className="text-xs text-muted-foreground mt-1 relative">{label}</p>
+        <div className="flex flex-col items-center justify-center relative flex-1">
+          <p className="text-2xl font-bold relative">{value}</p>
+          {trend && (
+            <span className="text-xs text-neon-green font-semibold">{trend}</span>
+          )}
+        </div>
+        <p className="text-xs text-muted-foreground relative">{label}</p>
       </Card>
     </motion.div>
   )

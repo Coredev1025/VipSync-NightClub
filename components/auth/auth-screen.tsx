@@ -206,7 +206,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
                   placeholder="+1 (555) 000-0000"
                   value={phone}
                   onChange={(e) => setPhone(e.target.value)}
-                  className="pl-12 h-14 bg-input border-border text-lg rounded-xl"
+                  className="pl-12 h-14 bg-input border-border text-lg rounded-xl input-glow-primary"
                 />
               </div>
 
@@ -260,7 +260,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
                     maxLength={1}
                     value={digit}
                     onChange={(e) => handleOtpChange(index, e.target.value)}
-                    className={`w-12 h-14 text-center text-xl font-mono bg-input border-border rounded-xl transition-all ${digit ? "border-neon-cyan glow-cyan" : ""}`}
+                    className="w-10 h-14 text-center text-xl font-mono bg-input border-border rounded-xl transition-all input-glow-cyan"
                   />
                 </motion.div>
               ))}
@@ -270,7 +270,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
               <Button
                 onClick={() => setStep("role")}
                 disabled={otp.some((d) => !d)}
-                className="w-full h-14 bg-gradient-to-r from-neon-pink to-neon-purple hover:opacity-90 text-primary-foreground glow-pink text-base font-semibold rounded-xl"
+                className="w-full h-14 bg-gradient-to-r from-neon-pink to-neon-purple text-primary-foreground glow-pink text-base font-semibold rounded-xl"
               >
                 Verify
                 <Lock className="ml-2 h-5 w-5" />
@@ -446,7 +446,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
                   placeholder="Your name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  className="pl-12 h-14 bg-input border-border rounded-xl"
+                  className="pl-12 h-14 bg-input border-border rounded-xl input-glow-primary"
                 />
               </div>
 
@@ -457,7 +457,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
                   placeholder="Referral code (optional)"
                   value={referralCode}
                   onChange={(e) => setReferralCode(e.target.value)}
-                  className="pl-12 h-14 bg-input border-neon-cyan/30 rounded-xl"
+                  className="pl-12 h-14 bg-input border-neon-cyan/30 rounded-xl input-glow-cyan"
                 />
               </div>
 
