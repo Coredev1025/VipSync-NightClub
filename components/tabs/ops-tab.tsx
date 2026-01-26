@@ -21,6 +21,7 @@ import {
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
+import { formatNumber } from "@/lib/utils"
 
 interface FeedItem {
   id: string
@@ -30,6 +31,21 @@ interface FeedItem {
   time: string
   table?: number
   avatar?: string
+}
+
+function getInitials(value: string) {
+  const cleaned = value.trim()
+  if (!cleaned) return "?"
+
+  const words = cleaned
+    .split(/\s+/g)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((w) => w[0]?.toUpperCase() ?? "")
+    .join("")
+
+  if (words) return words
+  return cleaned.slice(0, 2).toUpperCase()
 }
 
 const mockFeed: FeedItem[] = [
@@ -126,10 +142,10 @@ export function OpsTab() {
                 animate={{ scale: 1, opacity: 1 }}
                 transition={{ type: "spring" }}
               >
-                ${currentRevenue.toLocaleString()}
+                {formatNumber(currentRevenue, { prefix: "$" })}
               </motion.p>
               <p className="text-sm text-muted-foreground">
-                of ${revenueGoal.toLocaleString()} goal
+                of {formatNumber(revenueGoal, { prefix: "$" })} goal
               </p>
             </div>
             <div className="text-right">
@@ -251,9 +267,9 @@ export function OpsTab() {
         </motion.div>
 
         <AnimatePresence mode="popLayout">
-          <div className="space-y-3">
+          <div className="overflow-hidden rounded-2xl border border-border/30 glass-card">
             {filteredFeed.map((item, index) => (
-              <FeedItemCard key={item.id} item={item} index={index} />
+              <FeedItemRow key={item.id} item={item} index={index} />
             ))}
           </div>
         </AnimatePresence>
@@ -341,27 +357,19 @@ function QuickStatCard({
   )
 }
 
-function FeedItemCard({ item, index }: { item: FeedItem; index: number }) {
+function FeedItemRow({ item, index }: { item: FeedItem; index: number }) {
   const typeConfig = {
-    order: {
-      icon: <Wine className="h-5 w-5" />,
-      color: "pink",
-      glow: "glow-pink",
-    },
     arrival: {
-      icon: <MapPin className="h-5 w-5" />,
       color: "green",
-      glow: "glow-green",
     },
     alert: {
-      icon: <AlertCircle className="h-5 w-5" />,
       color: "orange",
-      glow: "glow-orange",
     },
     geo: {
-      icon: <Sparkles className="h-5 w-5" />,
       color: "cyan",
-      glow: "glow-cyan",
+    },
+    order: {
+      color: "pink",
     },
   }
 
@@ -373,53 +381,97 @@ function FeedItemCard({ item, index }: { item: FeedItem; index: number }) {
     cyan: "text-neon-cyan border-neon-cyan/30 bg-neon-cyan/10",
   }
 
+  const statusByType: Record<
+    FeedItem["type"],
+    { label: string; badgeClassName: string }
+  > = {
+    order: {
+      label: "Order",
+      badgeClassName:
+        "bg-neon-pink/20 text-neon-pink border-neon-pink/50 glow-pink",
+    },
+    arrival: {
+      label: "Arrival",
+      badgeClassName:
+        "bg-neon-green/20 text-neon-green border-neon-green/50 glow-green",
+    },
+    alert: {
+      label: "Alert",
+      badgeClassName:
+        "bg-neon-orange/20 text-neon-orange border-neon-orange/50 glow-orange",
+    },
+    geo: {
+      label: "Geo",
+      badgeClassName:
+        "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/50 glow-cyan",
+    },
+  }
+
+  const status = statusByType[item.type]
+  const hasAvatar = Boolean(item.avatar)
+
   return (
-    <motion.div
+    <motion.button
       initial={{ opacity: 0, x: -30, scale: 0.95 }}
       animate={{ opacity: 1, x: 0, scale: 1 }}
       exit={{ opacity: 0, x: 30, scale: 0.95 }}
       transition={{ delay: index * 0.05 }}
-      whileHover={{ scale: 1.02, x: 5 }}
+      whileHover={{ x: 6 }}
       layout
+      type="button"
+      className="w-full text-left"
     >
-      <Card className={`p-4 border glass-card ${colorClasses[config.color]} flex items-center gap-4 cursor-pointer transition-all`}>
-        {item.avatar ? (
-          <NeonAvatar
-            src={item.avatar.startsWith("/") ? item.avatar : undefined}
-            fallback={item.avatar.startsWith("/") ? item.avatar.split("/").pop()?.charAt(0).toUpperCase() || "U" : item.avatar}
-            size="md"
-            glow={config.color as "pink" | "cyan" | "green" | "orange"}
-            showPulse
-          />
-        ) : (
-          <motion.div 
-            whileHover={{ rotate: 10, scale: 1.1 }}
-            className={`w-12 h-12 rounded-xl flex items-center justify-center ${colorClasses[config.color]} ${config.glow}`}
-          >
-            {config.icon}
-          </motion.div>
-        )}
+      <div className="flex items-center gap-3 px-4 py-4 border-b border-border/30 last:border-b-0">
+        <div className="shrink-0">
+          {hasAvatar && item.avatar ? (
+            <NeonAvatar
+              src={item.avatar.startsWith("/") ? item.avatar : undefined}
+              fallback={getInitials(item.title)}
+              size="md"
+              glow={config.color as "pink" | "cyan" | "green" | "orange"}
+              showPulse
+            />
+          ) : (
+            <div
+              className={`w-12 h-12 rounded-full border-2 flex items-center justify-center font-semibold tracking-tight ${colorClasses[config.color]}`}
+            >
+              {getInitials(item.title)}
+            </div>
+          )}
+        </div>
+
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <p className="font-semibold">{item.title}</p>
-            {item.table && (
-              <Badge variant="outline" className={`text-[10px] ${colorClasses[config.color]}`}>
-                Table {item.table}
+          <div className="flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold leading-snug truncate">{item.title}</p>
+              <p className="text-xs text-muted-foreground truncate">
+                {item.description}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                {item.table && (
+                  <>
+                    <span className="text-foreground/80 font-medium">
+                      Table {item.table}
+                    </span>
+                    <span className="opacity-60">•</span>
+                  </>
+                )}
+                <span className="tabular-nums">{item.time}</span>
+              </p>
+            </div>
+
+            <div className="shrink-0 flex items-center gap-2 pt-0.5">
+              <Badge
+                variant="outline"
+                className={`text-[10px] px-2 py-1 rounded-full ${status.badgeClassName}`}
+              >
+                {status.label}
               </Badge>
-            )}
+              <ChevronRight className="h-4 w-4 text-muted-foreground" />
+            </div>
           </div>
-          <p className="text-xs text-muted-foreground truncate">{item.description}</p>
         </div>
-        <div className="flex items-center gap-2">
-          <span className="text-xs text-muted-foreground whitespace-nowrap">{item.time}</span>
-          <motion.div
-            whileHover={{ x: 3 }}
-            className="text-muted-foreground"
-          >
-            <ChevronRight className="h-4 w-4" />
-          </motion.div>
-        </div>
-      </Card>
-    </motion.div>
+      </div>
+    </motion.button>
   )
 }

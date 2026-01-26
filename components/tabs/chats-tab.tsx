@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { motion, AnimatePresence } from "framer-motion"
-import { Search, Plus, ChevronLeft, Send, Mic, ImageIcon, Sparkles, MapPin, Phone, Video, MoreVertical, Check, CheckCheck } from "lucide-react"
+import { Search, Plus, ChevronLeft, Send, Mic, ImageIcon, Sparkles, MapPin, Phone, MoreVertical, Check, CheckCheck } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -17,7 +17,7 @@ interface Chat {
   unread: number
   isGroup?: boolean
   isOnline?: boolean
-  members?: Array<{ fallback: string }>
+  members?: Array<{ src?: string; fallback: string }>
 }
 
 interface Message {
@@ -347,12 +347,6 @@ function ChatThread({
             className="p-2 hover:bg-muted rounded-lg"
           >
             <Phone className="h-5 w-5 text-muted-foreground" />
-          </motion.button>
-          <motion.button 
-            whileHover={{ scale: 1.1 }}
-            className="p-2 hover:bg-muted rounded-lg"
-          >
-            <Video className="h-5 w-5 text-muted-foreground" />
           </motion.button>
           <motion.button 
             whileHover={{ scale: 1.1 }}

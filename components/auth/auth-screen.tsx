@@ -190,8 +190,13 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
               Back
             </motion.button>
 
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-              <div className="w-14 h-14 rounded-2xl bg-neon-pink/20 border border-neon-pink/50 flex items-center justify-center mb-6 glow-pink">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-center"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-neon-pink/20 border border-neon-pink/50 flex items-center justify-center mb-6 glow-pink mx-auto">
                 <Phone className="h-7 w-7 text-neon-pink" />
               </div>
               <h2 className="text-2xl font-bold mb-2">Enter your phone</h2>
@@ -242,8 +247,13 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
               Back
             </motion.button>
 
-            <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}>
-              <div className="w-14 h-14 rounded-2xl bg-neon-cyan/20 border border-neon-cyan/50 flex items-center justify-center mb-6 glow-cyan">
+            <motion.div
+              initial={{ opacity: 0, y: 10 }}
+              animate={{ opacity: 1, y: 0 }}
+              transition={{ delay: 0.1 }}
+              className="text-center"
+            >
+              <div className="w-14 h-14 rounded-2xl bg-neon-cyan/20 border border-neon-cyan/50 flex items-center justify-center mb-6 glow-cyan mx-auto">
                 <Lock className="h-7 w-7 text-neon-cyan" />
               </div>
               <h2 className="text-2xl font-bold mb-2">Verify your phone</h2>

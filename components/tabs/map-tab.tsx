@@ -18,11 +18,34 @@ import {
   Mic,
   Navigation,
   Sparkles,
-  Zap
+  Zap,
+  Table,
+  Phone,
+  MessageSquare,
+  Calendar,
+  Plus,
+  Trash2,
+  Send
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
+import { formatNumber } from "@/lib/utils"
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from "@/components/ui/dialog"
+import { Search } from "lucide-react"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
+import { Calendar as CalendarComponent } from "@/components/ui/calendar"
+import { format, formatDistanceToNowStrict } from "date-fns"
 
 type ViewMode = "map" | "list"
 type TableStatus = "open" | "occupied" | "pending" | "reserved"
@@ -39,6 +62,35 @@ interface Table {
   spend?: number
   assignedTo?: string
   eta?: string
+  reservationId?: string
+  waitlistId?: string
+}
+
+interface WaitlistEntry {
+  id: string
+  name: string
+  phone: string
+  partySize: number
+  addedAt: Date
+  estimatedWaitTime: number // in minutes
+  notified: boolean
+  status: "waiting" | "notified" | "seated" | "cancelled"
+  notes?: string
+}
+
+interface Reservation {
+  id: string
+  name: string
+  phone: string
+  email?: string
+  partySize: number
+  date: Date
+  time: string
+  tableId?: string
+  status: "confirmed" | "pending" | "seated" | "cancelled" | "no-show"
+  specialRequests?: string
+  reminderSent: boolean
+  createdAt: Date
 }
 
 interface PathPoint {
@@ -46,7 +98,25 @@ interface PathPoint {
   y: number
 }
 
-const mockTables: Table[] = [
+interface StaffMember {
+  id: string
+  name: string
+  role: string
+  avatar: string
+  isOnline: boolean
+  tablesAssigned: number
+}
+
+const availableStaff: StaffMember[] = [
+  { id: "1", name: "Sarah M.", role: "Promoter", avatar: "/images/avatars/woman1.png", isOnline: true, tablesAssigned: 2 },
+  { id: "2", name: "Mike J.", role: "Promoter", avatar: "/images/avatars/man2.png", isOnline: true, tablesAssigned: 1 },
+  { id: "3", name: "John Doe", role: "Promoter", avatar: "/images/avatars/man1.png", isOnline: true, tablesAssigned: 0 },
+  { id: "4", name: "Marcus Chen", role: "Promoter", avatar: "/images/avatars/man3.png", isOnline: false, tablesAssigned: 0 },
+  { id: "5", name: "Alex Kim", role: "Promoter", avatar: "/images/avatars/man4.png", isOnline: true, tablesAssigned: 1 },
+  { id: "6", name: "Lisa Wang", role: "Promoter", avatar: "/images/avatars/man5.png", isOnline: true, tablesAssigned: 0 },
+]
+
+const initialTables: Table[] = [
   { id: "1", number: 1, x: 12, y: 18, status: "occupied", capacity: 8, currentGuests: 6, guestName: "Marcus Chen", spend: 2500, assignedTo: "Sarah M." },
   { id: "2", number: 2, x: 35, y: 18, status: "occupied", capacity: 10, currentGuests: 12, guestName: "Elite Group", spend: 4200, assignedTo: "Mike J." },
   { id: "3", number: 3, x: 58, y: 18, status: "reserved", capacity: 6, currentGuests: 0, guestName: "VIP Incoming", eta: "15 min" },
@@ -77,13 +147,291 @@ const statusLabels: Record<TableStatus, string> = {
   reserved: "Reserved",
 }
 
+function clampNumber(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function roundToStep(value: number, step: number) {
+  if (!Number.isFinite(value) || step <= 0) return value
+  return Math.round(value / step) * step
+}
+
+function getWaitEstimateMinutes({
+  queuePosition,
+  openTables,
+  partySize,
+}: {
+  queuePosition: number
+  openTables: number
+  partySize: number
+}) {
+  const base = 8 + Math.max(0, queuePosition - 1) * 6
+  const tablePressure = openTables === 0 ? 12 : openTables >= 3 ? -5 : 0
+  const partyPressure =
+    partySize >= 10
+      ? 12
+      : partySize >= 8
+        ? 8
+        : partySize >= 6
+          ? 4
+          : partySize <= 2
+            ? -2
+            : 0
+
+  const raw = base + tablePressure + partyPressure
+  const clamped = clampNumber(raw, 5, 60)
+  return roundToStep(clamped, 5)
+}
+
+function getWaitRangeMinutes(estimateMinutes: number) {
+  const spread = estimateMinutes >= 40 ? 15 : estimateMinutes >= 25 ? 10 : 5
+  const min = Math.max(0, estimateMinutes - spread)
+  const max = estimateMinutes + spread
+  return { min, max }
+}
+
+function formatWaitRange(estimateMinutes: number) {
+  const { min, max } = getWaitRangeMinutes(estimateMinutes)
+  if (min === max) return `${min} min`
+  return `${min}–${max} min`
+}
+
+function formatReadyAround(estimateMinutes: number) {
+  const readyAt = new Date(Date.now() + estimateMinutes * 60_000)
+  return format(readyAt, "p")
+}
+
+// Mock waitlist and reservations data
+const initialWaitlist: WaitlistEntry[] = [
+  {
+    id: "w1",
+    name: "David Martinez",
+    phone: "+1 (555) 123-4567",
+    partySize: 4,
+    addedAt: new Date(Date.now() - 20 * 60000), // 20 minutes ago
+    estimatedWaitTime: 25,
+    notified: false,
+    status: "waiting",
+    notes: "Birthday celebration"
+  },
+  {
+    id: "w2",
+    name: "Emma Thompson",
+    phone: "+1 (555) 234-5678",
+    partySize: 2,
+    addedAt: new Date(Date.now() - 10 * 60000), // 10 minutes ago
+    estimatedWaitTime: 15,
+    notified: false,
+    status: "waiting"
+  },
+  {
+    id: "w3",
+    name: "James Wilson",
+    phone: "+1 (555) 345-6789",
+    partySize: 6,
+    addedAt: new Date(Date.now() - 5 * 60000), // 5 minutes ago
+    estimatedWaitTime: 30,
+    notified: false,
+    status: "waiting",
+    notes: "VIP client"
+  }
+]
+
+const initialReservations: Reservation[] = [
+  {
+    id: "r1",
+    name: "VIP Incoming",
+    phone: "+1 (555) 456-7890",
+    email: "vip@example.com",
+    partySize: 6,
+    date: new Date(),
+    time: "21:00",
+    status: "confirmed",
+    reminderSent: true,
+    createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+  },
+  {
+    id: "r2",
+    name: "Williams",
+    phone: "+1 (555) 567-8901",
+    partySize: 8,
+    date: new Date(),
+    time: "22:00",
+    status: "confirmed",
+    reminderSent: true,
+    createdAt: new Date(Date.now() - 1 * 24 * 60 * 60 * 1000)
+  },
+  {
+    id: "r3",
+    name: "Corporate Event",
+    phone: "+1 (555) 678-9012",
+    email: "corp@example.com",
+    partySize: 12,
+    date: new Date(Date.now() + 24 * 60 * 60 * 1000), // Tomorrow
+    time: "20:00",
+    status: "confirmed",
+    reminderSent: false,
+    createdAt: new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+  }
+]
+
 export function MapTab() {
   const [viewMode, setViewMode] = useState<ViewMode>("map")
+  const [tables, setTables] = useState<Table[]>(initialTables)
+  const [waitlist, setWaitlist] = useState<WaitlistEntry[]>(initialWaitlist)
+  const [reservations, setReservations] = useState<Reservation[]>(initialReservations)
   const [selectedTable, setSelectedTable] = useState<Table | null>(null)
   const [showGuestList, setShowGuestList] = useState(false)
   const [isVoiceActive, setIsVoiceActive] = useState(false)
   const [showPath, setShowPath] = useState(true)
-  const [pathTarget, setPathTarget] = useState<Table | null>(mockTables[2]) // Default path to reserved table
+  const [pathTarget, setPathTarget] = useState<Table | null>(initialTables[2]) // Default path to reserved table
+  const [showAssignStaffDialog, setShowAssignStaffDialog] = useState(false)
+  const [showWaitlistDialog, setShowWaitlistDialog] = useState(false)
+  const [showReservationDialog, setShowReservationDialog] = useState(false)
+
+  const handleAssignStaff = (staffName: string) => {
+    if (!selectedTable) return
+    
+    setTables(prevTables =>
+      prevTables.map(table =>
+        table.id === selectedTable.id
+          ? { ...table, assignedTo: staffName }
+          : table
+      )
+    )
+    
+    // Update selected table to reflect the change
+    setSelectedTable(prev => prev ? { ...prev, assignedTo: staffName } : null)
+    setShowAssignStaffDialog(false)
+  }
+
+  const handleUnassignStaff = () => {
+    if (!selectedTable) return
+    
+    setTables(prevTables =>
+      prevTables.map(table =>
+        table.id === selectedTable.id
+          ? { ...table, assignedTo: undefined }
+          : table
+      )
+    )
+    
+    // Update selected table to reflect the change
+    setSelectedTable(prev => prev ? { ...prev, assignedTo: undefined } : null)
+  }
+
+  const handleAddToWaitlist = (entry: Omit<WaitlistEntry, "id" | "addedAt" | "estimatedWaitTime" | "notified" | "status">) => {
+    const activeQueueSize = waitlist.filter(w => w.status === "waiting" || w.status === "notified").length
+    const openTables = tables.filter(t => t.status === "open").length
+    const estimateMinutes = getWaitEstimateMinutes({
+      queuePosition: activeQueueSize + 1,
+      openTables,
+      partySize: entry.partySize,
+    })
+    
+    const newEntry: WaitlistEntry = {
+      id: `w${Date.now()}`,
+      ...entry,
+      addedAt: new Date(),
+      estimatedWaitTime: estimateMinutes,
+      notified: false,
+      status: "waiting"
+    }
+    
+    setWaitlist(prev => [...prev, newEntry])
+    setShowWaitlistDialog(false)
+  }
+
+  const handleRemoveFromWaitlist = (id: string) => {
+    setWaitlist(prev => prev.filter(entry => entry.id !== id))
+  }
+
+  const handleNotifyWaitlist = (id: string) => {
+    setWaitlist(prev =>
+      prev.map(entry =>
+        entry.id === id
+          ? { ...entry, notified: true, status: "notified" }
+          : entry
+      )
+    )
+    // In a real app, this would send an SMS
+  }
+
+  const handleSeatWaitlist = (id: string, tableId: string) => {
+    const entry = waitlist.find(w => w.id === id)
+    if (!entry) return
+
+    setWaitlist(prev => prev.filter(w => w.id !== id))
+    setTables(prevTables =>
+      prevTables.map(table =>
+        table.id === tableId
+          ? {
+              ...table,
+              status: "occupied",
+              guestName: entry.name,
+              currentGuests: entry.partySize,
+              waitlistId: id
+            }
+          : table
+      )
+    )
+  }
+
+  const handleCreateReservation = (reservation: Omit<Reservation, "id" | "createdAt" | "reminderSent">) => {
+    const newReservation: Reservation = {
+      ...reservation,
+      id: `r${Date.now()}`,
+      createdAt: new Date(),
+      reminderSent: false
+    }
+    
+    setReservations(prev => [...prev, newReservation])
+    
+    // If reserving for today and a table is available, assign it
+    const today = new Date()
+    const isToday = reservation.date.toDateString() === today.toDateString()
+    
+    if (isToday && reservation.tableId) {
+      setTables(prevTables =>
+        prevTables.map(table =>
+          table.id === reservation.tableId
+            ? {
+                ...table,
+                status: "reserved",
+                guestName: reservation.name,
+                reservationId: newReservation.id,
+                eta: reservation.time
+              }
+            : table
+        )
+      )
+    }
+    
+    setShowReservationDialog(false)
+  }
+
+  const handleCancelReservation = (id: string) => {
+    setReservations(prev =>
+      prev.map(res =>
+        res.id === id ? { ...res, status: "cancelled" as const } : res
+      )
+    )
+    
+    // Free up the table if it was assigned
+    setTables(prevTables =>
+      prevTables.map(table =>
+        table.reservationId === id
+          ? {
+              ...table,
+              status: "open",
+              guestName: undefined,
+              reservationId: undefined,
+              eta: undefined
+            }
+          : table
+      )
+    )
+  }
 
   return (
     <div className="flex flex-col h-full relative">
@@ -99,46 +447,48 @@ export function MapTab() {
       />
       
       {/* Controls */}
-      <div className="px-4 py-3 flex items-center justify-between border-b border-border glass-card">
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant={viewMode === "map" ? "default" : "outline"}
-            onClick={() => setViewMode("map")}
-            className={viewMode === "map" ? "bg-neon-pink text-primary-foreground glow-pink" : "border-border bg-transparent"}
-          >
-            <Grid3X3 className="h-4 w-4 mr-1" />
-            Map
-          </Button>
-          <Button
-            size="sm"
-            variant={viewMode === "list" ? "default" : "outline"}
-            onClick={() => setViewMode("list")}
-            className={viewMode === "list" ? "bg-neon-pink text-primary-foreground glow-pink" : "border-border bg-transparent"}
-          >
-            <List className="h-4 w-4 mr-1" />
-            List
-          </Button>
-        </div>
+      <div className="px-4 py-3 border-b border-border glass-card">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant={viewMode === "map" ? "default" : "outline"}
+              onClick={() => setViewMode("map")}
+              className={viewMode === "map" ? "bg-neon-pink text-primary-foreground glow-pink" : "border-border bg-transparent"}
+            >
+              <Grid3X3 className="h-4 w-4 mr-1" />
+              Map
+            </Button>
+            <Button
+              size="sm"
+              variant={viewMode === "list" ? "default" : "outline"}
+              onClick={() => setViewMode("list")}
+              className={viewMode === "list" ? "bg-neon-pink text-primary-foreground glow-pink" : "border-border bg-transparent"}
+            >
+              <List className="h-4 w-4 mr-1" />
+              List
+            </Button>
+          </div>
 
-        <div className="flex items-center gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => setShowGuestList(!showGuestList)}
-            className="border-border bg-transparent"
-          >
-            <Users className="h-4 w-4 mr-1" />
-            Guests
-          </Button>
-          <Button
-            size="icon"
-            variant={isVoiceActive ? "default" : "outline"}
-            onClick={() => setIsVoiceActive(!isVoiceActive)}
-            className={isVoiceActive ? "bg-neon-cyan glow-cyan animate-pulse" : "border-border bg-transparent"}
-          >
-            <Mic className="h-4 w-4" />
-          </Button>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => setShowGuestList(!showGuestList)}
+              className="border-border bg-transparent"
+            >
+              <Users className="h-4 w-4 mr-1" />
+              Guests
+            </Button>
+            <Button
+              size="icon"
+              variant={isVoiceActive ? "default" : "outline"}
+              onClick={() => setIsVoiceActive(!isVoiceActive)}
+              className={isVoiceActive ? "bg-neon-cyan glow-cyan animate-pulse" : "border-border bg-transparent"}
+            >
+              <Mic className="h-4 w-4" />
+            </Button>
+          </div>
         </div>
       </div>
 
@@ -149,7 +499,7 @@ export function MapTab() {
         className="px-4 py-2 flex gap-4 text-xs border-b border-border/50 overflow-x-auto glass-card"
       >
         <StatChip label="Occupied" value="5/8" color="pink" icon={<Users className="h-3 w-3" />} />
-        <StatChip label="Revenue" value="$10,600" color="green" icon={<DollarSign className="h-3 w-3" />} />
+        <StatChip label="Revenue" value={formatNumber(10600, { prefix: "$" })} color="green" icon={<DollarSign className="h-3 w-3" />} />
         <StatChip label="Capacity" value="38/56" color="cyan" icon={<Zap className="h-3 w-3" />} />
         <StatChip label="Pending" value="1" color="orange" icon={<Clock className="h-3 w-3" />} />
       </motion.div>
@@ -160,7 +510,7 @@ export function MapTab() {
           {viewMode === "map" ? (
             <MapView
               key="map"
-              tables={mockTables}
+              tables={tables}
               onSelectTable={(t) => {
                 setSelectedTable(t)
                 setPathTarget(t)
@@ -172,18 +522,30 @@ export function MapTab() {
           ) : (
             <ListView
               key="list"
-              tables={mockTables}
+              tables={tables}
               onSelectTable={setSelectedTable}
             />
           )}
         </AnimatePresence>
 
-        {/* Guest List Overlay */}
-        <AnimatePresence>
-          {showGuestList && (
-            <GuestListOverlay onClose={() => setShowGuestList(false)} />
-          )}
-        </AnimatePresence>
+      {/* Guest List Overlay */}
+      <AnimatePresence>
+        {showGuestList && (
+          <GuestListOverlay 
+            onClose={() => setShowGuestList(false)}
+            waitlist={waitlist}
+            reservations={reservations.filter(r => r.status === "confirmed" && r.date.toDateString() === new Date().toDateString())}
+            onAddWaitlist={() => {
+              setShowGuestList(false)
+              setShowWaitlistDialog(true)
+            }}
+            onAddReservation={() => {
+              setShowGuestList(false)
+              setShowReservationDialog(true)
+            }}
+          />
+        )}
+      </AnimatePresence>
 
         {/* Voice Command Overlay */}
         <AnimatePresence>
@@ -199,9 +561,41 @@ export function MapTab() {
           <TableDetailSheet
             table={selectedTable}
             onClose={() => setSelectedTable(null)}
+            onAssignStaff={() => setShowAssignStaffDialog(true)}
+            onUnassignStaff={handleUnassignStaff}
           />
         )}
       </AnimatePresence>
+
+      {/* Assign Staff Dialog */}
+      <AssignStaffDialog
+        open={showAssignStaffDialog}
+        onOpenChange={setShowAssignStaffDialog}
+        onSelectStaff={handleAssignStaff}
+        currentAssigned={selectedTable?.assignedTo}
+      />
+
+      {/* Waitlist Dialog */}
+      <WaitlistDialog
+        open={showWaitlistDialog}
+        onOpenChange={setShowWaitlistDialog}
+        onAdd={handleAddToWaitlist}
+        waitlist={waitlist}
+        onRemove={handleRemoveFromWaitlist}
+        onNotify={handleNotifyWaitlist}
+        onSeat={handleSeatWaitlist}
+        availableTables={tables.filter(t => t.status === "open" || t.status === "reserved")}
+      />
+
+      {/* Reservation Dialog */}
+      <ReservationDialog
+        open={showReservationDialog}
+        onOpenChange={setShowReservationDialog}
+        onCreate={handleCreateReservation}
+        reservations={reservations}
+        onCancel={handleCancelReservation}
+        availableTables={tables}
+      />
     </div>
   )
 }
@@ -494,7 +888,7 @@ function ListView({ tables, onSelectTable }: { tables: Table[]; onSelectTable: (
                 {table.spend && (
                   <span className="flex items-center gap-1 text-neon-green">
                     <DollarSign className="h-3 w-3" />
-                    {table.spend.toLocaleString()}
+                    {formatNumber(table.spend, { prefix: "$" })}
                   </span>
                 )}
                 {table.eta && (
@@ -515,7 +909,17 @@ function ListView({ tables, onSelectTable }: { tables: Table[]; onSelectTable: (
   )
 }
 
-function TableDetailSheet({ table, onClose }: { table: Table; onClose: () => void }) {
+function TableDetailSheet({ 
+  table, 
+  onClose,
+  onAssignStaff,
+  onUnassignStaff
+}: { 
+  table: Table
+  onClose: () => void
+  onAssignStaff: () => void
+  onUnassignStaff: () => void
+}) {
   return (
     <motion.div
       initial={{ y: "100%" }}
@@ -573,7 +977,7 @@ function TableDetailSheet({ table, onClose }: { table: Table; onClose: () => voi
         >
           <DollarSign className="h-5 w-5 text-neon-green mb-2" />
           <p className="text-2xl font-bold text-neon-green">
-            ${table.spend?.toLocaleString() || 0}
+            {formatNumber(table.spend || 0, { prefix: "$" })}
           </p>
           <p className="text-xs text-muted-foreground">Spend</p>
         </motion.div>
@@ -592,20 +996,31 @@ function TableDetailSheet({ table, onClose }: { table: Table; onClose: () => voi
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          className="mb-5 p-4 rounded-xl glass-card border border-neon-pink/30 flex items-center gap-4"
+          className="mb-5 p-4 rounded-xl glass-card border border-neon-pink/30 flex items-center justify-between gap-4"
         >
-          <NeonAvatar
-            src="/images/avatars/man3.png"
-            fallback={table.assignedTo.split(" ").map(n => n[0]).join("")}
-            size="lg"
-            glow="pink"
-            status="online"
-            showPulse
-          />
-          <div>
-            <p className="font-semibold">{table.assignedTo}</p>
-            <p className="text-xs text-muted-foreground">Assigned Promoter</p>
+          <div className="flex items-center gap-4">
+            <NeonAvatar
+              src={availableStaff.find(s => s.name === table.assignedTo)?.avatar || "/images/avatars/man3.png"}
+              fallback={table.assignedTo.split(" ").join("")}
+              size="lg"
+              glow="pink"
+              status={availableStaff.find(s => s.name === table.assignedTo)?.isOnline ? "online" : undefined}
+              showPulse
+            />
+            <div>
+              <p className="font-semibold">{table.assignedTo}</p>
+              <p className="text-xs text-muted-foreground">Assigned Promoter</p>
+            </div>
           </div>
+          <motion.button
+            whileHover={{ scale: 1.1 }}
+            whileTap={{ scale: 0.9 }}
+            onClick={onUnassignStaff}
+            className="p-2 hover:bg-muted rounded-lg transition-colors"
+            title="Unassign staff"
+          >
+            <X className="h-4 w-4 text-muted-foreground" />
+          </motion.button>
         </motion.div>
       )}
 
@@ -615,9 +1030,13 @@ function TableDetailSheet({ table, onClose }: { table: Table; onClose: () => voi
           <Wine className="h-5 w-5 mr-2" />
           Add Order
         </Button>
-        <Button variant="outline" className="border-neon-cyan/50 bg-transparent text-neon-cyan hover:bg-neon-cyan/10 h-12">
+        <Button 
+          variant="outline" 
+          className="border-neon-cyan/50 bg-transparent text-neon-cyan hover:bg-neon-cyan/10 h-12"
+          onClick={onAssignStaff}
+        >
           <UserPlus className="h-5 w-5 mr-2" />
-          Assign Staff
+          {table.assignedTo ? "Change Staff" : "Assign Staff"}
         </Button>
         <Button variant="outline" className="border-neon-green/50 bg-transparent text-neon-green hover:bg-neon-green/10 col-span-2 h-12">
           <CheckCircle className="h-5 w-5 mr-2" />
@@ -628,14 +1047,22 @@ function TableDetailSheet({ table, onClose }: { table: Table; onClose: () => voi
   )
 }
 
-function GuestListOverlay({ onClose }: { onClose: () => void }) {
-  const guests = [
-    { name: "Marcus Chen", status: "inside" as const, tableNum: 1 },
-    { name: "Elite Group", status: "inside" as const, tableNum: 2 },
-    { name: "Williams Party", status: "expected" as const, eta: "30 min" },
-    { name: "VIP Incoming", status: "expected" as const, eta: "15 min" },
-    { name: "Johnson Party", status: "inside" as const, tableNum: 5 },
-  ]
+function GuestListOverlay({ 
+  onClose,
+  waitlist,
+  reservations,
+  onAddWaitlist,
+  onAddReservation
+}: { 
+  onClose: () => void
+  waitlist: WaitlistEntry[]
+  reservations: Reservation[]
+  onAddWaitlist: () => void
+  onAddReservation: () => void
+}) {
+  const activeWaitlist = waitlist.filter(w => w.status === "waiting" || w.status === "notified")
+  const activeReservations = reservations.filter(r => r.status === "confirmed")
+  const [focus, setFocus] = useState<"all" | "waitlist" | "reservations">("all")
 
   return (
     <motion.div
@@ -658,48 +1085,180 @@ function GuestListOverlay({ onClose }: { onClose: () => void }) {
         </motion.button>
       </div>
 
-      <div className="flex gap-2 px-4 py-3">
-        <Badge className="bg-neon-green/20 text-neon-green border-neon-green/50 glow-green">Inside: 3</Badge>
-        <Badge className="bg-neon-cyan/20 text-neon-cyan border-neon-cyan/50 glow-cyan">Expected: 2</Badge>
+      {/* Quick Actions */}
+      <div className="flex gap-2 px-4 py-3 border-b border-border">
+        <Button
+          size="sm"
+          onClick={onAddWaitlist}
+          className="flex-1 bg-neon-orange/20 text-neon-orange border border-neon-orange/50 hover:bg-neon-orange/30"
+        >
+          <Plus className="h-4 w-4 mr-1" />
+          Add to Waitlist
+        </Button>
+        <Button
+          size="sm"
+          onClick={onAddReservation}
+          className="flex-1 bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/50 hover:bg-neon-cyan/30"
+        >
+          <Calendar className="h-4 w-4 mr-1" />
+          New Reservation
+        </Button>
       </div>
 
-      <div className="flex-1 overflow-y-auto divide-y divide-border">
-        {guests.map((guest, i) => (
-          <motion.div 
-            key={i} 
-            initial={{ opacity: 0, x: -20 }}
-            animate={{ opacity: 1, x: 0 }}
-            transition={{ delay: i * 0.1 }}
-            whileHover={{ backgroundColor: "var(--muted)", x: 5 }}
-            className="flex items-center justify-between px-4 py-4 transition-all"
-          >
-            <div className="flex items-center gap-3">
-              <NeonAvatar
-                src={i === 0 ? "/images/avatars/man4.png" : i === 1 ? "/images/avatars/man5.png" : i === 2 ? "/images/avatars/man6.png" : i === 3 ? "/images/avatars/man7.png" : "/images/avatars/man8.png"}
-                fallback={guest.name.split(" ").map(n => n[0]).join("")}
-                size="md"
-                glow={guest.status === "inside" ? "green" : "cyan"}
-                status={guest.status === "inside" ? "online" : "away"}
-              />
-              <div>
-                <p className="font-semibold">{guest.name}</p>
-                {guest.tableNum && (
-                  <p className="text-xs text-muted-foreground">Table {guest.tableNum}</p>
-                )}
-                {guest.eta && (
-                  <p className="text-xs text-neon-cyan">ETA: {guest.eta}</p>
-                )}
-              </div>
-            </div>
-            <Badge className={guest.status === "inside" 
-              ? "bg-neon-green/20 text-neon-green border-neon-green/50" 
-              : "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/50"
-            }>
-              {guest.status === "inside" ? "Inside" : "Expected"}
-            </Badge>
-          </motion.div>
-        ))}
+      {/* Focus Tabs */}
+      <div className="flex gap-2 px-4 py-3">
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setFocus("waitlist")}
+          className={
+            focus === "waitlist"
+              ? "bg-neon-orange/20 text-neon-orange border-neon-orange/50 glow-orange"
+              : "bg-transparent text-muted-foreground border-border hover:text-foreground"
+          }
+        >
+          <Clock className="h-4 w-4 mr-1" />
+          Waitlist
+          <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-neon-orange text-primary-foreground border-0">
+            {activeWaitlist.length}
+          </Badge>
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setFocus("reservations")}
+          className={
+            focus === "reservations"
+              ? "bg-neon-cyan/20 text-neon-cyan border-neon-cyan/50 glow-cyan"
+              : "bg-transparent text-muted-foreground border-border hover:text-foreground"
+          }
+        >
+          <Calendar className="h-4 w-4 mr-1" />
+          Reservations
+          <Badge className="ml-1.5 h-4 px-1.5 text-[10px] bg-neon-cyan text-primary-foreground border-0">
+            {activeReservations.length}
+          </Badge>
+        </Button>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setFocus("all")}
+          className={
+            focus === "all"
+              ? "bg-muted/60 text-foreground border-border"
+              : "bg-transparent text-muted-foreground border-border hover:text-foreground"
+          }
+        >
+          <Users className="h-4 w-4 mr-1" />
+          All
+        </Button>
       </div>
+
+      {/* Waitlist Section */}
+      {(focus === "waitlist" || focus === "all") && activeWaitlist.length > 0 && (
+        <div className="px-4 py-2">
+          <h4 className="text-sm font-semibold text-neon-orange mb-2 flex items-center gap-2">
+            <Clock className="h-4 w-4" />
+            Waitlist
+          </h4>
+          <div className="space-y-2">
+            {activeWaitlist.map((entry, i) => (
+              <motion.div
+                key={entry.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="p-3 rounded-xl glass-card border border-neon-orange/30"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <NeonAvatar
+                      fallback={entry.name.split(" ").map(n => n[0]).join("")}
+                      size="sm"
+                      glow="orange"
+                    />
+                    <div>
+                      <p className="font-semibold text-sm">{entry.name}</p>
+                      <div className="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-muted-foreground">
+                        <span>{entry.partySize} guests</span>
+                        <span className="opacity-60">•</span>
+                        <span className="tabular-nums">Est. {formatWaitRange(entry.estimatedWaitTime)}</span>
+                        <span className="opacity-60">•</span>
+                        <span className="tabular-nums">Ready ~{formatReadyAround(entry.estimatedWaitTime)}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Badge className={entry.status === "notified" 
+                    ? "bg-neon-green/20 text-neon-green border-neon-green/50" 
+                    : "bg-neon-orange/20 text-neon-orange border-neon-orange/50"
+                  }>
+                    {entry.status === "notified" ? "Notified" : "Waiting"}
+                  </Badge>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Reservations Section */}
+      {(focus === "reservations" || focus === "all") && activeReservations.length > 0 && (
+        <div className="px-4 py-2 border-t border-border">
+          <h4 className="text-sm font-semibold text-neon-cyan mb-2 flex items-center gap-2">
+            <Calendar className="h-4 w-4" />
+            Reservations
+          </h4>
+          <div className="space-y-2">
+            {activeReservations.map((reservation, i) => (
+              <motion.div
+                key={reservation.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: i * 0.05 }}
+                className="p-3 rounded-xl glass-card border border-neon-cyan/30"
+              >
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <NeonAvatar
+                      fallback={reservation.name.split(" ").map(n => n[0]).join("")}
+                      size="sm"
+                      glow="cyan"
+                    />
+                    <div>
+                      <p className="font-semibold text-sm">{reservation.name}</p>
+                      <div className="flex items-center gap-2 text-xs text-muted-foreground">
+                        <span>{reservation.partySize} guests</span>
+                        <span>•</span>
+                        <span>{format(reservation.date, "MMM d")} at {reservation.time}</span>
+                      </div>
+                    </div>
+                  </div>
+                  <Badge className="bg-neon-cyan/20 text-neon-cyan border-neon-cyan/50">
+                    Confirmed
+                  </Badge>
+                </div>
+              </motion.div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {((focus === "waitlist" && activeWaitlist.length === 0) ||
+        (focus === "reservations" && activeReservations.length === 0) ||
+        (focus === "all" && activeWaitlist.length === 0 && activeReservations.length === 0)) && (
+        <div className="flex-1 flex items-center justify-center text-center py-12">
+          <div>
+            <Users className="h-12 w-12 mx-auto mb-4 text-muted-foreground opacity-50" />
+            <p className="text-muted-foreground">
+              {focus === "waitlist"
+                ? "No one on the waitlist"
+                : focus === "reservations"
+                  ? "No reservations right now"
+                  : "No active waitlist or reservations"}
+            </p>
+          </div>
+        </div>
+      )}
     </motion.div>
   )
 }
@@ -775,5 +1334,629 @@ function VoiceCommandOverlay({ onClose }: { onClose: () => void }) {
         ))}
       </div>
     </motion.div>
+  )
+}
+
+function AssignStaffDialog({
+  open,
+  onOpenChange,
+  onSelectStaff,
+  currentAssigned,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onSelectStaff: (staffName: string) => void
+  currentAssigned?: string
+}) {
+  const [searchQuery, setSearchQuery] = useState("")
+
+  const filteredStaff = availableStaff.filter(staff =>
+    staff.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+    staff.role.toLowerCase().includes(searchQuery.toLowerCase())
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="glass-card-strong border-border max-w-md max-h-[80vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-left">
+            <UserPlus className="h-5 w-5 text-neon-cyan" />
+            Assign Staff to Table
+          </DialogTitle>
+          <DialogDescription className="text-left">
+            Select a staff member to assign to this table
+          </DialogDescription>
+        </DialogHeader>
+
+        {/* Search */}
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <Input
+            placeholder="Search staff..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            className="pl-10 bg-input border-border rounded-xl"
+          />
+        </div>
+
+        {/* Staff List */}
+        <div className="flex-1 overflow-y-auto space-y-2 mt-4">
+          {filteredStaff.length === 0 ? (
+            <div className="text-center py-8 text-muted-foreground">
+              <Users className="h-12 w-12 mx-auto mb-2 opacity-50" />
+              <p>No staff members found</p>
+            </div>
+          ) : (
+            filteredStaff.map((staff, index) => (
+              <motion.button
+                key={staff.id}
+                initial={{ opacity: 0, x: -20 }}
+                animate={{ opacity: 1, x: 0 }}
+                transition={{ delay: index * 0.05 }}
+                whileHover={{ scale: 1.02, x: 5 }}
+                whileTap={{ scale: 0.98 }}
+                onClick={() => onSelectStaff(staff.name)}
+                className={`w-full flex items-center gap-4 p-4 rounded-xl border transition-all text-left ${
+                  currentAssigned === staff.name
+                    ? "bg-neon-pink/20 border-neon-pink/50 glow-pink"
+                    : "glass-card border-border hover:bg-muted"
+                }`}
+              >
+                <NeonAvatar
+                  src={staff.avatar}
+                  fallback={staff.name.split(" ").map(n => n[0]).join("")}
+                  size="md"
+                  glow={staff.isOnline ? "green" : "cyan"}
+                  status={staff.isOnline ? "online" : undefined}
+                />
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2">
+                    <p className="font-semibold truncate">{staff.name}</p>
+                    {currentAssigned === staff.name && (
+                      <Badge className="bg-neon-pink text-primary-foreground border-0 text-[10px] glow-pink">
+                        Current
+                      </Badge>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-3 text-xs text-muted-foreground mt-1">
+                    <span>{staff.role}</span>
+                    <span className="flex items-center gap-1">
+                      <Table className="h-3 w-3" />
+                      {staff.tablesAssigned} table{staff.tablesAssigned !== 1 ? "s" : ""}
+                    </span>
+                  </div>
+                </div>
+                {staff.isOnline && (
+                  <motion.div
+                    animate={{ scale: [1, 1.2, 1] }}
+                    transition={{ duration: 2, repeat: Infinity }}
+                    className="w-2 h-2 rounded-full bg-neon-green glow-green"
+                  />
+                )}
+              </motion.button>
+            ))
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function WaitlistDialog({
+  open,
+  onOpenChange,
+  onAdd,
+  waitlist,
+  onRemove,
+  onNotify,
+  onSeat,
+  availableTables
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onAdd: (entry: Omit<WaitlistEntry, "id" | "addedAt" | "estimatedWaitTime" | "notified" | "status">) => void
+  waitlist: WaitlistEntry[]
+  onRemove: (id: string) => void
+  onNotify: (id: string) => void
+  onSeat: (waitlistId: string, tableId: string) => void
+  availableTables: Table[]
+}) {
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [notes, setNotes] = useState("")
+  const activeWaitlist = waitlist.filter(w => w.status === "waiting" || w.status === "notified")
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name || !phone) return
+    
+    onAdd({ name, phone, partySize, notes: notes || undefined })
+    setName("")
+    setPhone("")
+    setPartySize(2)
+    setNotes("")
+    setShowAddForm(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="glass-card-strong border-border max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-left">
+            <Clock className="h-5 w-5 text-neon-orange" />
+            Waitlist Management
+          </DialogTitle>
+          <DialogDescription className="text-left">
+            Manage walk-in guests and notify them when tables are ready
+          </DialogDescription>
+        </DialogHeader>
+
+        {!showAddForm ? (
+          <>
+            <Button
+              onClick={() => setShowAddForm(true)}
+              className="w-full bg-neon-orange/20 text-neon-orange border border-neon-orange/50 hover:bg-neon-orange/30"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              Add to Waitlist
+            </Button>
+
+            <div className="flex-1 overflow-y-auto space-y-2 mt-4">
+              {activeWaitlist.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Clock className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No one on waitlist</p>
+                </div>
+              ) : (
+                activeWaitlist.map((entry, index) => (
+                  <motion.div
+                    key={entry.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="p-4 rounded-xl glass-card border border-neon-orange/30"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <NeonAvatar
+                          fallback={entry.name.split(" ").map(n => n[0]).join("")}
+                          size="md"
+                          glow="orange"
+                        />
+                        <div>
+                          <p className="font-semibold">{entry.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Phone className="h-3 w-3" />
+                            <span>{entry.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => onRemove(entry.id)}
+                        className="p-1.5 hover:bg-destructive/20 rounded-lg"
+                      >
+                        <Trash2 className="h-4 w-4 text-destructive" />
+                      </motion.button>
+                    </div>
+                    
+                    <div className="flex items-center gap-3 text-sm mb-2">
+                      <span className="text-muted-foreground">{entry.partySize} guests</span>
+                      <span className="text-neon-orange font-semibold tabular-nums">
+                        Est. {formatWaitRange(entry.estimatedWaitTime)}
+                      </span>
+                      <Badge className={entry.status === "notified" 
+                        ? "bg-neon-green/20 text-neon-green border-neon-green/50" 
+                        : "bg-neon-orange/20 text-neon-orange border-neon-orange/50"
+                      }>
+                        {entry.status === "notified" ? "Notified" : "Waiting"}
+                      </Badge>
+                    </div>
+
+                    <p className="text-xs text-muted-foreground mb-3 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                      <span className="tabular-nums">
+                        Ready ~<span className="text-foreground font-medium">{formatReadyAround(entry.estimatedWaitTime)}</span>
+                      </span>
+                      <span className="opacity-60">•</span>
+                      <span>
+                        Added {formatDistanceToNowStrict(entry.addedAt, { addSuffix: true })}
+                      </span>
+                    </p>
+
+                    {entry.notes && (
+                      <p className="text-xs text-muted-foreground mb-3 italic">"{entry.notes}"</p>
+                    )}
+
+                    <div className="flex gap-2">
+                      {!entry.notified && (
+                        <Button
+                          size="sm"
+                          onClick={() => onNotify(entry.id)}
+                          className="flex-1 bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/50 hover:bg-neon-cyan/30"
+                        >
+                          <MessageSquare className="h-4 w-4 mr-1" />
+                          Send SMS
+                        </Button>
+                      )}
+                      <Select onValueChange={(value) => onSeat(entry.id, value)}>
+                        <SelectTrigger className="flex-1 border-border">
+                          <SelectValue placeholder="Seat at table..." />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {availableTables.map(table => (
+                            <SelectItem key={table.id} value={table.id}>
+                              Table {table.number} ({table.capacity} seats)
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="name">Guest Name</Label>
+              <Input
+                id="name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter guest name"
+                required
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="phone">Phone Number</Label>
+              <Input
+                id="phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 123-4567"
+                required
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="partySize">Party Size</Label>
+              <Input
+                id="partySize"
+                type="number"
+                min="1"
+                max="20"
+                value={partySize}
+                onChange={(e) => setPartySize(parseInt(e.target.value) || 1)}
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="notes">Notes (Optional)</Label>
+              <Textarea
+                id="notes"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Special requests, VIP status, etc."
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAddForm(false)
+                  setName("")
+                  setPhone("")
+                  setPartySize(2)
+                  setNotes("")
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1 bg-neon-orange hover:bg-neon-orange/90">
+                Add to Waitlist
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function ReservationDialog({
+  open,
+  onOpenChange,
+  onCreate,
+  reservations,
+  onCancel,
+  availableTables
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  onCreate: (reservation: Omit<Reservation, "id" | "createdAt" | "reminderSent">) => void
+  reservations: Reservation[]
+  onCancel: (id: string) => void
+  availableTables: Table[]
+}) {
+  const [showAddForm, setShowAddForm] = useState(false)
+  const [name, setName] = useState("")
+  const [phone, setPhone] = useState("")
+  const [email, setEmail] = useState("")
+  const [partySize, setPartySize] = useState(2)
+  const [date, setDate] = useState<Date>(new Date())
+  const [time, setTime] = useState("20:00")
+  const [tableId, setTableId] = useState<string>("")
+  const [specialRequests, setSpecialRequests] = useState("")
+  const [datePickerOpen, setDatePickerOpen] = useState(false)
+
+  const todayReservations = reservations.filter(
+    r => r.status === "confirmed" && r.date.toDateString() === new Date().toDateString()
+  )
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!name || !phone) return
+    
+    onCreate({
+      name,
+      phone,
+      email: email || undefined,
+      partySize,
+      date,
+      time,
+      tableId: tableId || undefined,
+      status: "confirmed",
+      specialRequests: specialRequests || undefined
+    })
+    
+    setName("")
+    setPhone("")
+    setEmail("")
+    setPartySize(2)
+    setDate(new Date())
+    setTime("20:00")
+    setTableId("")
+    setSpecialRequests("")
+    setShowAddForm(false)
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="glass-card-strong border-border max-w-md max-h-[85vh] overflow-hidden flex flex-col">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-left">
+            <Calendar className="h-5 w-5 text-neon-cyan" />
+            Reservations
+          </DialogTitle>
+          <DialogDescription className="text-left">
+            Manage table reservations and bookings
+          </DialogDescription>
+        </DialogHeader>
+
+        {!showAddForm ? (
+          <>
+            <Button
+              onClick={() => setShowAddForm(true)}
+              className="w-full bg-neon-cyan/20 text-neon-cyan border border-neon-cyan/50 hover:bg-neon-cyan/30"
+            >
+              <Plus className="h-4 w-4 mr-2" />
+              New Reservation
+            </Button>
+
+            <div className="flex-1 overflow-y-auto space-y-2 mt-4">
+              {todayReservations.length === 0 ? (
+                <div className="text-center py-8 text-muted-foreground">
+                  <Calendar className="h-12 w-12 mx-auto mb-2 opacity-50" />
+                  <p>No reservations for today</p>
+                </div>
+              ) : (
+                todayReservations.map((reservation, index) => (
+                  <motion.div
+                    key={reservation.id}
+                    initial={{ opacity: 0, y: 20 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ delay: index * 0.05 }}
+                    className="p-4 rounded-xl glass-card border border-neon-cyan/30"
+                  >
+                    <div className="flex items-start justify-between mb-3">
+                      <div className="flex items-center gap-3">
+                        <NeonAvatar
+                          fallback={reservation.name.split(" ").map(n => n[0]).join("")}
+                          size="md"
+                          glow="cyan"
+                        />
+                        <div>
+                          <p className="font-semibold">{reservation.name}</p>
+                          <div className="flex items-center gap-2 text-xs text-muted-foreground mt-1">
+                            <Phone className="h-3 w-3" />
+                            <span>{reservation.phone}</span>
+                          </div>
+                        </div>
+                      </div>
+                      <motion.button
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                        onClick={() => onCancel(reservation.id)}
+                        className="p-1.5 hover:bg-destructive/20 rounded-lg"
+                      >
+                        <X className="h-4 w-4 text-destructive" />
+                      </motion.button>
+                    </div>
+                    
+                    <div className="space-y-1 text-sm">
+                      <div className="flex items-center gap-2">
+                        <Users className="h-4 w-4 text-muted-foreground" />
+                        <span>{reservation.partySize} guests</span>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Clock className="h-4 w-4 text-muted-foreground" />
+                        <span>{format(reservation.date, "MMM d, yyyy")} at {reservation.time}</span>
+                      </div>
+                      {reservation.tableId && (
+                        <div className="flex items-center gap-2">
+                          <Table className="h-4 w-4 text-muted-foreground" />
+                          <span>Table {availableTables.find(t => t.id === reservation.tableId)?.number || "TBD"}</span>
+                        </div>
+                      )}
+                      {reservation.specialRequests && (
+                        <p className="text-xs text-muted-foreground italic mt-2">"{reservation.specialRequests}"</p>
+                      )}
+                    </div>
+                  </motion.div>
+                ))
+              )}
+            </div>
+          </>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div>
+              <Label htmlFor="res-name">Guest Name</Label>
+              <Input
+                id="res-name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                placeholder="Enter guest name"
+                required
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="res-phone">Phone Number</Label>
+              <Input
+                id="res-phone"
+                type="tel"
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
+                placeholder="+1 (555) 123-4567"
+                required
+                className="mt-1"
+              />
+            </div>
+            <div>
+              <Label htmlFor="res-email">Email (Optional)</Label>
+              <Input
+                id="res-email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="guest@example.com"
+                className="mt-1"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-2">
+              <div>
+                <Label htmlFor="res-partySize">Party Size</Label>
+                <Input
+                  id="res-partySize"
+                  type="number"
+                  min="1"
+                  max="20"
+                  value={partySize}
+                  onChange={(e) => setPartySize(parseInt(e.target.value) || 1)}
+                  className="mt-1"
+                />
+              </div>
+              <div>
+                <Label htmlFor="res-time">Time</Label>
+                <Input
+                  id="res-time"
+                  type="time"
+                  value={time}
+                  onChange={(e) => setTime(e.target.value)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+            <div>
+              <Label>Date</Label>
+              <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className="w-full mt-1 justify-start text-left font-normal"
+                  >
+                    <Calendar className="mr-2 h-4 w-4" />
+                    {date ? format(date, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <CalendarComponent
+                    mode="single"
+                    selected={date}
+                    onSelect={(selectedDate) => {
+                      if (selectedDate) {
+                        setDate(selectedDate)
+                        setDatePickerOpen(false)
+                      }
+                    }}
+                    disabled={(date) => date < new Date(new Date().setHours(0, 0, 0, 0))}
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+            <div>
+              <Label htmlFor="res-table">Table (Optional)</Label>
+              <Select value={tableId} onValueChange={setTableId}>
+                <SelectTrigger className="mt-1">
+                  <SelectValue placeholder="Select table..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">No specific table</SelectItem>
+                  {availableTables.map(table => (
+                    <SelectItem key={table.id} value={table.id}>
+                      Table {table.number} ({table.capacity} seats)
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label htmlFor="res-requests">Special Requests (Optional)</Label>
+              <Textarea
+                id="res-requests"
+                value={specialRequests}
+                onChange={(e) => setSpecialRequests(e.target.value)}
+                placeholder="Dietary restrictions, celebration, etc."
+                className="mt-1"
+                rows={2}
+              />
+            </div>
+            <div className="flex gap-2">
+              <Button
+                type="button"
+                variant="outline"
+                onClick={() => {
+                  setShowAddForm(false)
+                  setName("")
+                  setPhone("")
+                  setEmail("")
+                  setPartySize(2)
+                  setDate(new Date())
+                  setTime("20:00")
+                  setTableId("")
+                  setSpecialRequests("")
+                }}
+                className="flex-1"
+              >
+                Cancel
+              </Button>
+              <Button type="submit" className="flex-1 bg-neon-cyan hover:bg-neon-cyan/90">
+                Create Reservation
+              </Button>
+            </div>
+          </form>
+        )}
+      </DialogContent>
+    </Dialog>
   )
 }
