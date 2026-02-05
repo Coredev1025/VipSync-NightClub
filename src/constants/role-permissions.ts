@@ -12,8 +12,10 @@
  * | Map tables           | Edit     | View | Edit    | Edit  |
  * | Club settings        | No       | No   | Yes     | Yes   |
  * | Ops tab              | No       | No   | Yes     | Yes   |
+ * | Bottles & Stock      | View     | View | View+Manage | View+Manage |
  *
  * Vibe Events: Who can add/edit/delete events on Home. Manager & Owner only.
+ * Bottles & Stock: Add/edit/delete bottles and stock — Manager & Owner only.
  * Live Feed: Part of Ops; only Manager & Owner can see Ops and manage feed.
  */
 
@@ -49,7 +51,7 @@ export function canEditMapTables(role: NightclubRole | undefined): boolean {
   return role !== "door"
 }
 
-/** Manager and owner can edit bottle girl / table girl; promoter can only edit promoter. */
+/** Manager and owner can edit bottle girl / table girl; promoter cannot edit promoter or table girl. */
 export function canEditTableGirl(role: NightclubRole | undefined): boolean {
   return role === "manager" || role === "owner"
 }
@@ -82,5 +84,14 @@ export function canViewLiveFeed(role: NightclubRole | undefined): boolean {
  * Same as Ops access; use for future "add feed item" or feed config.
  */
 export function canManageLiveFeed(role: NightclubRole | undefined): boolean {
+  return role === "manager" || role === "owner"
+}
+
+// ─── Bottles & Stock ────────────────────────────────────────────────────────
+/**
+ * Nightclub business: Only manager and owner can add, edit, or delete bottles and stock.
+ * Promoter and door can view the list only (no Add, Edit, or Delete).
+ */
+export function canManageBottlesAndStock(role: NightclubRole | undefined): boolean {
   return role === "manager" || role === "owner"
 }

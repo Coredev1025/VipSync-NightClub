@@ -206,6 +206,8 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
   } | null>(null)
   const [showNotifications, setShowNotifications] = React.useState(false)
   const [showSearch, setShowSearch] = React.useState(false)
+  // Notification count for badge dot (e.g. from API); when > 0, pink dot is shown
+  const notificationCount = 3
   const [showUserMenu, setShowUserMenu] = React.useState(false)
   const [avatarLayout, setAvatarLayout] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const avatarRef = React.useRef<View>(null)
@@ -304,9 +306,11 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
                 accessibilityLabel="Notifications"
               >
                 <Bell size={18} color="rgba(180, 180, 190, 0.75)" />
-                <View style={styles.notificationBadge}>
-                  <PulsingDot color={theme.colors.neonPink} size={10} />
-                </View>
+                {notificationCount > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <PulsingDot color={theme.colors.neonPink} size={10} />
+                  </View>
+                ) : null}
               </HapticPressable>
 
               <HapticPressable
@@ -353,7 +357,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
           styles.navWrap, 
           { 
             paddingBottom: Math.max(insets.bottom, 12),
-            backgroundColor: theme.colors.background,
+            backgroundColor: "#18181f",
           }
         ]}
       >
@@ -361,7 +365,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
           style={[
             styles.navBlurBackground,
             {
-              backgroundColor: theme.colors.background,
+              backgroundColor: "#18181f",
             }
           ]}
         >
@@ -415,7 +419,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
               ]}
             >
               <View style={styles.searchBarRow}>
-                <Search size={20} color={theme.colors.mutedForeground} style={styles.searchBarIcon} />
+                <Search size={18} color={theme.colors.mutedForeground} style={styles.searchBarIcon} />
                 <Input
                   placeholder="Search tables, guests, orders..."
                   containerStyle={[styles.searchBarInput, { backgroundColor: "transparent", borderWidth: 0 }]}
@@ -777,8 +781,8 @@ const styles = StyleSheet.create({
   },
   searchOverlay: {
     position: "absolute",
-    left: 16,
-    right: 16,
+    left: 48,
+    right: 48,
     zIndex: 50,
   },
   notificationsOverlay: {
@@ -792,32 +796,32 @@ const styles = StyleSheet.create({
   },
   searchBarContainer: {
     borderWidth: 1,
-    borderRadius: 28,
+    borderRadius: 20,
     overflow: "hidden",
     paddingHorizontal: 4,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   searchBarRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   searchBarIcon: {
-    marginLeft: 8,
+    marginLeft: 6,
   },
   searchBarInput: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 32,
     paddingHorizontal: 8,
-    borderRadius: 20,
+    borderRadius: 14,
   },
   searchBarInputText: {
-    fontSize: 15,
+    fontSize: 14,
   },
   searchBarClear: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },

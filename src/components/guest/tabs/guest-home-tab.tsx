@@ -2,6 +2,7 @@ import { useLocalStorageState } from "@/components/guest/guest-storage"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
@@ -9,7 +10,7 @@ import { images } from "@/lib/assets"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
 import { Image } from "expo-image"
-import { Calendar, Check, Clock } from "lucide-react-native"
+import { Calendar, Check, Clock, Gavel } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
 import { ScrollView, StyleSheet, Text, View } from "react-native"
@@ -32,10 +33,47 @@ interface FeaturedTable {
   tag: "HOT" | "LIMITED" | "BEST VALUE"
 }
 
+/** VIP table available for bidding: shows current bid, leader, next bid amount. */
+interface VipBiddingTable {
+  id: string
+  name: string
+  capacity: number
+  currentBid: number
+  leader: string
+  nextBidAmount: number
+}
+
+/** VIP table available for fixed booking: shows min spend and book now. */
+interface VipBookingTable {
+  id: string
+  name: string
+  capacity: number
+  description: string
+  minSpend: number
+}
+
+type VipTableItem = { type: "bidding"; data: VipBiddingTable } | { type: "booking"; data: VipBookingTable }
+
+const vipBiddingTables: VipBiddingTable[] = [
+  { id: "table-4", name: "TABLE 4", capacity: 8, currentBid: 1200, leader: "@CryptoKing", nextBidAmount: 1250 },
+  { id: "jade-booth", name: "Jade Booth", capacity: 6, currentBid: 1100, leader: "@VIPGuest", nextBidAmount: 1200 },
+]
+
+const vipBookingTables: VipBookingTable[] = [
+  { id: "table-6", name: "TABLE 6", capacity: 6, description: "Great view of the stage. Standard minimum spend applies.", minSpend: 500 },
+  { id: "pearl-sofa", name: "Pearl Sofa", capacity: 4, description: "Intimate setting. Min spend applies.", minSpend: 800 },
+]
+
 const featuredTables: FeaturedTable[] = [
   { id: "jade-booth", name: "Jade Booth", seats: "4–6", minSpend: 1200, tag: "HOT" },
   { id: "pearl-sofa", name: "Pearl Sofa", seats: "2–4", minSpend: 800, tag: "BEST VALUE" },
   { id: "tokyo-stage", name: "Tokyo Stage", seats: "6–10", minSpend: 2200, tag: "LIMITED" },
+]
+
+/** Combined list for VIP TABLES: bidding items first, then booking (same order as reference UI). */
+const vipTableItems: VipTableItem[] = [
+  ...vipBiddingTables.map((data) => ({ type: "bidding" as const, data })),
+  ...vipBookingTables.map((data) => ({ type: "booking" as const, data })),
 ]
 
 interface HomeEvent {
@@ -67,7 +105,54 @@ export function GuestHomeTab() {
     djKhaled: false,
     teamAlpha: false,
   })
+  const [biddingTable, setBiddingTable] = React.useState<FeaturedTable | null>(null)
+  const [bidAmount, setBidAmount] = React.useState("")
+  const [tableBids, setTableBids] = React.useState<Record<string, number>>({})
   const isOpenNow = getIsOpenNow(new Date())
+
+  const openBidSheet = React.useCallback((table: FeaturedTable) => {
+    setBiddingTable(table)
+    setBidAmount("")
+  }, [])
+
+  const closeBidSheet = React.useCallback(() => {
+    setBiddingTable(null)
+    setBidAmount("")
+  }, [])
+
+  const submitBid = React.useCallback(() => {
+    if (!biddingTable) return
+    const amount = parseInt(bidAmount.replace(/[^0-9]/g, ""), 10)
+    if (Number.isNaN(amount) || amount < biddingTable.minSpend) {
+      toast({
+        title: "Invalid bid",
+        description: `Minimum spend for ${biddingTable.name} is ${formatNumber(biddingTable.minSpend, { prefix: "$" })}`,
+        variant: "destructive",
+      })
+      return
+    }
+    setTableBids((prev) => ({ ...prev, [biddingTable.id]: amount }))
+    toast({
+      title: "Bid placed",
+      description: `${biddingTable.name}: ${formatNumber(amount, { prefix: "$" })}. We'll notify you if your bid is accepted.`,
+    })
+    closeBidSheet()
+  }, [biddingTable, bidAmount, toast, closeBidSheet])
+
+  const openBidSheetForVip = React.useCallback((data: VipBiddingTable) => {
+    setBiddingTable({ id: data.id, name: data.name, seats: `${data.capacity}`, minSpend: data.nextBidAmount, tag: "HOT" })
+    setBidAmount(String(data.nextBidAmount))
+  }, [])
+
+  const handleBookNow = React.useCallback(
+    (data: VipBookingTable) => {
+      toast({
+        title: "Booking requested",
+        description: `${data.name} at ${formatNumber(data.minSpend, { prefix: "$" })} min spend. We'll confirm shortly.`,
+      })
+    },
+    [toast]
+  )
 
   return (
     <>
@@ -180,42 +265,88 @@ export function GuestHomeTab() {
                   <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }}>Featured VIP</Text>
                   <Badge tone="pink">Tonight</Badge>
                 </View>
-                <View style={{ marginTop: 10, gap: 10 }}>
-                  {featuredTables.map((t, idx) => (
-                    <Animated.View key={t.id} entering={FadeInRight.delay(200 + idx * 50).duration(250).springify()}>
-                      <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonPink}33` }}>
-                        <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
-                          <View style={{ flex: 1, minWidth: 0 }}>
-                            <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                              <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }} numberOfLines={1}>
-                                {t.name}
+                <Text style={{ color: theme.colors.mutedForeground, fontSize: 13, marginTop: 8, textAlign: "center" }}>
+                  Select a table to bid or book.
+                </Text>
+                <View style={{ marginTop: 12, gap: 12 }}>
+                  {vipTableItems.map((item, idx) =>
+                    item.type === "bidding" ? (
+                      <Animated.View key={item.data.id} entering={FadeInRight.delay(200 + idx * 50).duration(250).springify()}>
+                        <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonCyan}55`, borderWidth: 1.5 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Orbitron_900Black", fontSize: 18 }} numberOfLines={1}>
+                                  {item.data.name}
+                                </Text>
+                                <Badge tone="cyan">BIDDING OPEN</Badge>
+                              </View>
+                              <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 8 }}>
+                                Cap: {item.data.capacity} Guests
                               </Text>
-                              <Badge
-                                tone={
-                                  t.tag === "HOT"
-                                    ? "orange"
-                                    : t.tag === "LIMITED"
-                                      ? "green"
-                                      : "cyan"
-                                }
-                              >
-                                {t.tag}
-                              </Badge>
+                              <View style={{ marginTop: 10, gap: 4 }}>
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>Current Bid</Text>
+                                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 16 }}>
+                                  {formatNumber(item.data.currentBid, { prefix: "$" })}
+                                </Text>
+                              </View>
+                              <View style={{ marginTop: 6, gap: 2 }}>
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>Leader</Text>
+                                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>{item.data.leader}</Text>
+                              </View>
                             </View>
-                            <Text style={{ color: theme.colors.mutedForeground, marginTop: 6 }}>
-                              Seats {t.seats} • Min spend{" "}
-                              <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold" }}>
-                                {formatNumber(t.minSpend, { prefix: "$" })}
+                            <Button
+                              size="md"
+                              variant="outline"
+                              tone="cyan"
+                              style={{ borderRadius: 12, minHeight: 44, borderWidth: 1.5 }}
+                              onPress={() => openBidSheetForVip(item.data)}
+                            >
+                              <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                                PLACE BID ({formatNumber(item.data.nextBidAmount, { prefix: "$" })})
                               </Text>
-                            </Text>
+                            </Button>
                           </View>
-                          <Badge tone="pink">
-                            Min {formatNumber(t.minSpend, { prefix: "$" })}
-                          </Badge>
-                        </View>
-                      </Card>
-                    </Animated.View>
-                  ))}
+                        </Card>
+                      </Animated.View>
+                    ) : (
+                      <Animated.View key={item.data.id} entering={FadeInRight.delay(200 + idx * 50).duration(250).springify()}>
+                        <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonGreen}55`, borderWidth: 1.5 }}>
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 8, flexWrap: "wrap" }}>
+                                <Text style={{ color: theme.colors.neonGreen, fontFamily: "Orbitron_900Black", fontSize: 18 }} numberOfLines={1}>
+                                  {item.data.name}
+                                </Text>
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>Cap: {item.data.capacity} Guests</Text>
+                              </View>
+                              <Text style={{ color: theme.colors.mutedForeground, fontSize: 13, marginTop: 8 }} numberOfLines={2}>
+                                {item.data.description}
+                              </Text>
+                              <View style={{ marginTop: 10, gap: 4 }}>
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>Min Spend:</Text>
+                                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 16 }}>
+                                  {formatNumber(item.data.minSpend, { prefix: "$" })}
+                                </Text>
+                              </View>
+                            </View>
+                            <Button
+                              size="md"
+                              variant="solid"
+                              tone="green"
+                              style={{ borderRadius: 12, minHeight: 44 }}
+                              onPress={() => handleBookNow(item.data)}
+                            >
+                              <View style={styles.rowCenter}>
+                                <Check size={16} color="#fff" />
+                                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>BOOK NOW</Text>
+                              </View>
+                            </Button>
+                          </View>
+                        </Card>
+                      </Animated.View>
+                    )
+                  )}
                 </View>
               </Card>
             </Animated.View>
@@ -260,6 +391,40 @@ export function GuestHomeTab() {
         </Animated.View>
       </View>
     </ScrollView>
+
+      <ModalSheet
+        open={biddingTable != null}
+        onClose={closeBidSheet}
+        maxHeightPct={0.5}
+        title={biddingTable ? `Place bid — ${biddingTable.name}` : "Place bid"}
+        showHeader
+      >
+        {biddingTable ? (
+          <View style={{ padding: 16, gap: 14 }}>
+            <Text style={{ color: theme.colors.mutedForeground, fontSize: 14 }}>
+              Min spend: {formatNumber(biddingTable.minSpend, { prefix: "$" })} • Seats {biddingTable.seats}
+            </Text>
+            <View>
+              <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>Your bid amount</Text>
+              <Input
+                value={bidAmount}
+                onChangeText={setBidAmount}
+                placeholder={`e.g. ${biddingTable.minSpend}`}
+                keyboardType="number-pad"
+                containerStyle={{ borderColor: theme.colors.border, borderRadius: 12 }}
+                style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold" }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+            </View>
+            <Button variant="solid" tone="pink" onPress={submitBid} style={{ marginTop: 4 }}>
+              <View style={styles.rowCenter}>
+                <Gavel size={18} color={theme.colors.neonPink} />
+                <Text style={{ color: theme.colors.neonPink, fontFamily: "Orbitron_700Bold" }}>Submit bid</Text>
+              </View>
+            </Button>
+          </View>
+        ) : null}
+      </ModalSheet>
     </>
   )
 }

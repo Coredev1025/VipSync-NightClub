@@ -20,6 +20,7 @@ import {
 } from "@expo-google-fonts/orbitron"
 
 import { BottlesProvider } from "@/contexts/bottles-context"
+import { LiveFeedProvider } from "@/contexts/live-feed-context"
 import { ToastProvider } from "@/providers/toast-provider"
 import { ThemeProvider } from "@/theme/theme-provider"
 
@@ -56,7 +57,9 @@ export function AppProviders({ children }: AppProvidersProps) {
       <ThemeProvider>
         <SafeAreaProvider>
           <BottlesProvider>
-            <ToastProvider>{children}</ToastProvider>
+            <LiveFeedProvider>
+              <ToastProvider>{children}</ToastProvider>
+            </LiveFeedProvider>
           </BottlesProvider>
         </SafeAreaProvider>
       </ThemeProvider>

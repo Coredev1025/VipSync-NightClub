@@ -1,11 +1,13 @@
 import type { Bottle } from "@/contexts/bottles-context"
 import { useBottles } from "@/contexts/bottles-context"
+import { canManageBottlesAndStock } from "@/constants/role-permissions"
+import type { NightclubRole } from "@/constants/role-permissions"
 import { bottleImages, type BottleImageKey } from "@/lib/assets"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
 import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
-import { ArrowLeft, Camera, Pencil, Plus, Trash2, Wine, X } from "lucide-react-native"
+import { Camera, Pencil, Plus, Trash2, Wine, X } from "lucide-react-native"
 import * as React from "react"
 import { Alert, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
@@ -19,12 +21,15 @@ import { ModalSheet } from "@/components/ui/modal"
 
 export interface BottlesTabProps {
   onClose?: () => void
+  /** Pro user role – only manager and owner can add/edit/delete bottles & stock. */
+  userRole?: NightclubRole
 }
 
-export function BottlesTab({ onClose }: BottlesTabProps) {
+export function BottlesTab({ onClose, userRole }: BottlesTabProps) {
   const insets = useSafeAreaInsets()
   const { theme } = useTheme()
   const { bottles, addBottle, updateBottle, deleteBottle } = useBottles()
+  const canManage = canManageBottlesAndStock(userRole)
   const [formOpen, setFormOpen] = React.useState(false)
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [name, setName] = React.useState("")
@@ -101,17 +106,26 @@ export function BottlesTab({ onClose }: BottlesTabProps) {
             { paddingTop: Math.max(insets.top, 12), borderBottomColor: theme.colors.border },
           ]}
         >
-          <HapticPressable onPress={onClose} style={styles.settingsBack} accessibilityLabel="Close">
-            <ArrowLeft size={22} color={theme.colors.foreground} />
-          </HapticPressable>
+          {canManage ? (
+            <HapticPressable
+              onPress={openAdd}
+              style={[styles.settingsAddBtn, { backgroundColor: theme.colors.neonPink }]}
+              accessibilityLabel="Add bottle"
+              accessibilityHint="Opens form to add a new bottle"
+            >
+              <Plus size={22} color="#fff" />
+            </HapticPressable>
+          ) : (
+            <View style={styles.settingsAddBtn} />
+          )}
           <View style={styles.settingsTitleRow}>
             <Wine size={18} color={theme.colors.neonPink} />
             <Text style={[styles.settingsTitle, { color: theme.colors.foreground }]} numberOfLines={1}>
               Bottles & Stock
             </Text>
           </View>
-          <HapticPressable onPress={openAdd} style={styles.settingsBack} accessibilityLabel="Add bottle">
-            <Plus size={22} color={theme.colors.foreground} />
+          <HapticPressable onPress={onClose} style={styles.settingsBack} accessibilityLabel="Close">
+            <X size={22} color={theme.colors.foreground} />
           </HapticPressable>
         </View>
       )}
@@ -125,10 +139,12 @@ export function BottlesTab({ onClose }: BottlesTabProps) {
         {!isModalStyle && (
           <View style={styles.headerRow}>
             <Text style={[styles.title, { color: theme.colors.foreground }]}>Bottles & Stock</Text>
-            <Button onPress={openAdd} size="sm">
-              <Plus size={16} color="#000" />
-              <Text style={styles.addLabel}>Add</Text>
-            </Button>
+            {canManage && (
+              <Button onPress={openAdd} size="sm">
+                <Plus size={16} color="#000" />
+                <Text style={styles.addLabel}>Add</Text>
+              </Button>
+            )}
           </View>
         )}
         {bottles.length === 0 ? (
@@ -161,14 +177,16 @@ export function BottlesTab({ onClose }: BottlesTabProps) {
                   {formatNumber(b.price, { prefix: "$" })} · Stock: {b.stock}
                 </Text>
               </View>
-              <View style={styles.cardActions}>
-                <HapticPressable onPress={() => openEdit(b)} style={styles.iconBtn} accessibilityLabel="Edit bottle">
-                  <Pencil size={18} color={theme.colors.foreground} />
-                </HapticPressable>
-                <HapticPressable onPress={() => handleDelete(b.id)} style={styles.iconBtn} accessibilityLabel="Delete bottle">
-                  <Trash2 size={18} color="#ff3b30" />
-                </HapticPressable>
-              </View>
+              {canManage && (
+                <View style={styles.cardActions}>
+                  <HapticPressable onPress={() => openEdit(b)} style={styles.iconBtn} accessibilityLabel="Edit bottle">
+                    <Pencil size={18} color={theme.colors.foreground} />
+                  </HapticPressable>
+                  <HapticPressable onPress={() => handleDelete(b.id)} style={styles.iconBtn} accessibilityLabel="Delete bottle">
+                    <Trash2 size={18} color="#ff3b30" />
+                  </HapticPressable>
+                </View>
+              )}
             </Card>
           ))
         )}
@@ -265,6 +283,13 @@ const styles = StyleSheet.create({
     height: 44,
     alignItems: "center",
     justifyContent: "center",
+  },
+  settingsAddBtn: {
+    width: 44,
+    height: 44,
+    alignItems: "center",
+    justifyContent: "center",
+    borderRadius: 22,
   },
   settingsTitleRow: {
     flex: 1,

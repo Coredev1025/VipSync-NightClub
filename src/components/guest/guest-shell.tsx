@@ -168,6 +168,8 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
   const [showNotifications, setShowNotifications] = React.useState(false)
   const [showSearch, setShowSearch] = React.useState(false)
   const [showGuestMenu, setShowGuestMenu] = React.useState(false)
+  // Notification count for badge dot (e.g. from API); when > 0, pink dot is shown
+  const notificationCount = 0
   const [avatarLayout, setAvatarLayout] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const avatarRef = React.useRef<View>(null)
   const { width: windowWidth } = useWindowDimensions()
@@ -271,9 +273,11 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
                 accessibilityLabel="Notifications"
               >
                 <Bell size={18} color="rgba(180, 180, 190, 0.75)" />
-                <View style={styles.notificationBadge}>
-                  <PulsingDot color={theme.colors.neonPink} size={10} />
-                </View>
+                {notificationCount > 0 ? (
+                  <View style={styles.notificationBadge}>
+                    <PulsingDot color={theme.colors.neonPink} size={10} />
+                  </View>
+                ) : null}
               </HapticPressable>
 
               <View ref={avatarRef} collapsable={false}>
@@ -375,7 +379,7 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
               ]}
             >
               <View style={styles.searchBarRow}>
-                <Search size={20} color={theme.colors.mutedForeground} style={styles.searchBarIcon} />
+                <Search size={18} color={theme.colors.mutedForeground} style={styles.searchBarIcon} />
                 <Input
                   placeholder="Search events, tables, info..."
                   containerStyle={[styles.searchBarInput, { backgroundColor: "transparent", borderWidth: 0 }]}
@@ -588,32 +592,32 @@ const styles = StyleSheet.create({
   },
   searchBarContainer: {
     borderWidth: 1,
-    borderRadius: 28,
+    borderRadius: 20,
     overflow: "hidden",
     paddingHorizontal: 4,
-    paddingVertical: 4,
+    paddingVertical: 2,
   },
   searchBarRow: {
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
   },
   searchBarIcon: {
-    marginLeft: 8,
+    marginLeft: 6,
   },
   searchBarInput: {
     flex: 1,
-    minHeight: 44,
+    minHeight: 32,
     paddingHorizontal: 8,
-    borderRadius: 20,
+    borderRadius: 14,
   },
   searchBarInputText: {
-    fontSize: 15,
+    fontSize: 14,
   },
   searchBarClear: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
+    width: 28,
+    height: 28,
+    borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
   },

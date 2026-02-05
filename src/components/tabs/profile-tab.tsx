@@ -92,7 +92,7 @@ type SettingsSection = "account" | "notifications" | "privacy" | "club"
 
 const BASE_MENU_ITEMS: { key: SettingsSection; icon: React.ReactNode; label: string; badge?: string; color: "cyan" | "pink" | "green"; proOnly?: boolean; managerOnly?: boolean }[] = [
   { key: "account", icon: <Settings size={18} />, label: "Account Settings", color: "cyan" },
-  { key: "notifications", icon: <Bell size={18} />, label: "Notifications", badge: "3", color: "pink" },
+  { key: "notifications", icon: <Bell size={18} />, label: "Notifications", color: "pink" },
   { key: "privacy", icon: <Shield size={18} />, label: "Privacy & Security", color: "green" },
   { key: "club", icon: <Building2 size={18} />, label: "Manage Club Settings", color: "cyan", proOnly: true, managerOnly: true },
 ]
@@ -278,7 +278,7 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
                     <Text style={{ color: "#fff", fontFamily: "Orbitron_900Black", fontSize: 11 }}>{item.badge}</Text>
                   </View>
                 ) : null}
-                <ChevronRight size={16} color={theme.colors.mutedForeground} />
+                {item.key !== "notifications" ? <ChevronRight size={16} color={theme.colors.mutedForeground} /> : null}
               </Pressable>
             </MotiView>
           ))}

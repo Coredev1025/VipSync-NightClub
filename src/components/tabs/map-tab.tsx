@@ -51,6 +51,7 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
+import { useLiveFeed, type LiveFeedItemInput } from "@/contexts/live-feed-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -337,17 +338,22 @@ export interface MapTabProps {
   /** Order from chat "Order Synced. Tap to View Map." – applied to table and then cleared */
   pendingChatOrder?: PendingChatOrder | null
   onConsumePendingOrder?: () => void
-  /** Manager/owner can edit promoter + table girl; promoter can only edit promoter. All pro roles can see all table info. */
+  /** Manager/owner can edit promoter and table girl; promoter cannot edit promoter. All pro roles can see all table info. */
   userRole?: MapTabUserRole
 }
 
 const canEditTableGirl = (role: MapTabUserRole | undefined) =>
   role === "manager" || role === "owner"
 
+/** Only manager/owner can edit promoter; promoter and door cannot. */
+const canEditPromoter = (role: MapTabUserRole | undefined) =>
+  role === "manager" || role === "owner"
+
 /** Door staff: view-only (no editing tables). Other roles can edit. */
 const canEditMapTables = (role: MapTabUserRole | undefined) => role !== "door"
 
 export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOrder, userRole = "manager" }: MapTabProps = {}) {
+  const { addFeedItem } = useLiveFeed()
   const { theme } = useTheme()
 
   const [viewMode, setViewMode] = React.useState<ViewMode>("map")
@@ -721,21 +727,13 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
       <ModalSheet open={showGuestList} onClose={() => setShowGuestList(false)} maxHeightPct={1} title="Guest List">
         <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12, marginBottom: 12 }}>
-            <HapticPressable
-              onPress={() => setShowAddGuestSheet(true)}
-              style={[styles.guestListBtn, { borderColor: theme.colors.neonCyan, backgroundColor: `${theme.colors.neonCyan}18` }]}
-              accessibilityLabel="Add guest"
-            >
-              <UserPlus size={16} color={theme.colors.neonCyan} />
-              <Text style={[styles.guestListBtnText, { color: theme.colors.neonCyan }]}>Add guest</Text>
-            </HapticPressable>
             <View
               style={{
                 flex: 1,
                 flexDirection: "row",
                 alignItems: "center",
                 gap: 8,
-                minHeight: 44,
+                height: 44,
                 paddingLeft: 14,
                 paddingRight: 14,
                 borderWidth: 1,
@@ -754,6 +752,14 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
                 placeholderTextColor={theme.colors.mutedForeground}
               />
             </View>
+            <HapticPressable
+              onPress={() => setShowAddGuestSheet(true)}
+              style={[styles.guestListBtn, { borderColor: theme.colors.neonCyan, backgroundColor: `${theme.colors.neonCyan}18`, height: 44 }]}
+              accessibilityLabel="Add guest"
+            >
+              <UserPlus size={16} color={theme.colors.neonCyan} />
+              <Text style={[styles.guestListBtnText, { color: theme.colors.neonCyan }]}>Add guest</Text>
+            </HapticPressable>
           </View>
           <View style={[styles.guestListTabs, { borderColor: theme.colors.border, backgroundColor: theme.colors.muted }]}>
             <HapticPressable
@@ -1117,6 +1123,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
             onEditTable={effectiveOnEditTable}
             onUpdateTable={effectiveOnUpdateTable}
             canEditTableGirl={canEditTableGirl(userRole)}
+            canEditPromoter={canEditPromoter(userRole)}
             onAddBottle={
               effectiveOnUpdateTable
                 ? (itemsText, pendingAmount) => {
@@ -1126,9 +1133,17 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
                     const updates: Partial<Table> = { itemsSummary: next }
                     if (pendingAmount != null) updates.pendingSpend = (t.pendingSpend ?? 0) + pendingAmount
                     handleUpdateTable(selectedTable.id, updates)
+                    addFeedItem({
+                      type: "order",
+                      title: "Bottle ordered",
+                      description: `${itemsText} - Table ${t.isDjBooth ? "DJ" : t.number}`,
+                      time: "Just now",
+                      table: t.isDjBooth ? undefined : t.number,
+                    })
                   }
                 : undefined
             }
+            onAddToLiveFeed={addFeedItem}
           />
         </ModalSheet>
       ) : null}
@@ -1143,6 +1158,13 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
             table={tables.find((t) => t.id === selectedTable.id) ?? selectedTable}
             onSave={(updates) => {
               handleUpdateTable(selectedTable.id, updates)
+              addFeedItem({
+                type: "alert",
+                title: "Table info updated",
+                description: `Table ${selectedTable.isDjBooth ? "DJ" : selectedTable.number}`,
+                time: "Just now",
+                table: selectedTable.isDjBooth ? undefined : selectedTable.number,
+              })
               setShowEditTableSheet(false)
             }}
             onClose={() => setShowEditTableSheet(false)}
@@ -2502,7 +2524,9 @@ function TableDetailSheet({
   onEditTable,
   onAddBottle,
   onUpdateTable,
+  onAddToLiveFeed,
   canEditTableGirl = true,
+  canEditPromoter = false,
 }: {
   table: Table
   onClose: () => void
@@ -2511,8 +2535,12 @@ function TableDetailSheet({
   onEditTable?: () => void
   onAddBottle?: (itemsText: string, pendingAmount?: number) => void
   onUpdateTable?: (tableId: string, updates: Partial<Table>) => void
-  /** Manager/owner see and edit table girl; promoter only sees/edits promoter */
+  /** When provided, table events (promoter/server/mark complete) are added to Live Feed. */
+  onAddToLiveFeed?: (item: LiveFeedItemInput) => void
+  /** Manager/owner see and edit table girl; promoter cannot edit promoter. */
   canEditTableGirl?: boolean
+  /** Manager/owner can edit promoter; promoter and door cannot. Default false so promoter never sees it. */
+  canEditPromoter?: boolean
 }) {
   const { theme } = useTheme()
   const statusColor = getStatusColor(theme, table.status)
@@ -2782,17 +2810,19 @@ function TableDetailSheet({
               </View>
             </Button>
           </View>
-          {onEditTable || onUpdateTable ? (
+          {(onEditTable || onUpdateTable) && (canEditPromoter || canEditTableGirl) ? (
             <View style={{ flexDirection: "row", gap: 10, marginTop: 10, flexWrap: "wrap" }}>
-              <HapticPressable
-                onPress={() => setShowEditPromoterSheet(true)}
-                neonBorder
-                borderColor={`${theme.colors.neonCyan}AA`}
-                style={[styles.editRoleBtn, { borderColor: theme.colors.neonCyan, backgroundColor: theme.colors.card }]}
-              >
-                <User size={18} color={theme.colors.neonCyan} />
-                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Edit promoter</Text>
-              </HapticPressable>
+              {canEditPromoter ? (
+                <HapticPressable
+                  onPress={() => setShowEditPromoterSheet(true)}
+                  neonBorder
+                  borderColor={`${theme.colors.neonCyan}AA`}
+                  style={[styles.editRoleBtn, { borderColor: theme.colors.neonCyan, backgroundColor: theme.colors.card }]}
+                >
+                  <User size={18} color={theme.colors.neonCyan} />
+                  <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Edit promoter</Text>
+                </HapticPressable>
+              ) : null}
               {canEditTableGirl ? (
                 <HapticPressable
                   onPress={() => setShowEditBottleGirlSheet(true)}
@@ -2837,6 +2867,13 @@ function TableDetailSheet({
                     text: "Yes",
                     onPress: () => {
                       onUpdateTable?.(table.id, { status: "open" })
+                      onAddToLiveFeed?.({
+                        type: "order",
+                        title: "Table marked complete",
+                        description: `Table ${table.isDjBooth ? "DJ" : table.number}`,
+                        time: "Just now",
+                        table: table.isDjBooth ? undefined : table.number,
+                      })
                       onClose()
                     },
                   },
@@ -2860,6 +2897,13 @@ function TableDetailSheet({
           placeholder="Promoter name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { promoter: name || undefined })
+            onAddToLiveFeed?.({
+              type: "arrival",
+              title: "Promoter updated",
+              description: `Table ${table.isDjBooth ? "DJ" : table.number} - ${name || "—"}`,
+              time: "Just now",
+              table: table.isDjBooth ? undefined : table.number,
+            })
             setShowEditPromoterSheet(false)
           }}
           onClose={() => setShowEditPromoterSheet(false)}
@@ -2873,6 +2917,13 @@ function TableDetailSheet({
           placeholder="Bottle girl name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { server: name || undefined })
+            onAddToLiveFeed?.({
+              type: "order",
+              title: "Bottle girl updated",
+              description: `Table ${table.isDjBooth ? "DJ" : table.number} - ${name || "—"}`,
+              time: "Just now",
+              table: table.isDjBooth ? undefined : table.number,
+            })
             setShowEditBottleGirlSheet(false)
           }}
           onClose={() => setShowEditBottleGirlSheet(false)}
@@ -3812,7 +3863,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     <Button
                       variant="solid"
                       tone="green"
-                      style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 32, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center" }]}
+                      style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center" }]}
                       onPress={() => setShowUpdateDetectedDialog(true)}
                     >
                       <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.5 }}>
@@ -3821,7 +3872,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     </Button>
                     <HapticPressable
                       onPress={() => removeTableItem(item.id)}
-                      style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 32, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center", alignItems: "center" }]}
+                      style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center", alignItems: "center" }]}
                       accessibilityLabel="Remove item"
                       accessibilityRole="button"
                     >
@@ -4085,7 +4136,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     <Button
                       variant="solid"
                       tone="green"
-                      style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 32, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center" }]}
+                      style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center" }]}
                       onPress={() => setShowUpdateDetectedDialog(true)}
                     >
                       <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.5 }}>
@@ -4094,7 +4145,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     </Button>
                     <HapticPressable
                       onPress={() => removeBarItem(item.id)}
-                      style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 32, paddingVertical: 6, paddingHorizontal: 14, borderRadius: 16, justifyContent: "center", alignItems: "center" }]}
+                      style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center", alignItems: "center" }]}
                       accessibilityLabel="Remove item"
                       accessibilityRole="button"
                     >
@@ -5100,11 +5151,11 @@ const styles = StyleSheet.create({
   },
   selectBtn: {
     marginLeft: 12,
-    paddingVertical: 12,
-    paddingHorizontal: 24,
-    minHeight: 44,
-    borderRadius: 22,
-    borderWidth: 1.5,
+    paddingVertical: 6,
+    paddingHorizontal: 14,
+    minHeight: 28,
+    borderRadius: 14,
+    borderWidth: 1,
   },
   textAreaWrap: {
     borderRadius: 16,

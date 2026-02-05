@@ -189,9 +189,7 @@ export function GSChatDetails({
       chatBubble: {
         alignSelf: "flex-start" as const,
         padding: 12,
-        backgroundColor: isDark
-          ? "rgba(255, 255, 255, 0.12)"
-          : "rgba(0, 0, 0, 0.08)",
+        backgroundColor: theme.colors.card,
         marginBottom: 10,
         borderTopRightRadius: 14,
         borderBottomRightRadius: 14,
@@ -199,9 +197,7 @@ export function GSChatDetails({
         borderTopLeftRadius: 4,
         maxWidth: "80%" as ViewStyle["maxWidth"],
         borderWidth: 1,
-        borderColor: isDark
-          ? "rgba(255, 255, 255, 0.2)"
-          : "rgba(0, 0, 0, 0.1)",
+        borderColor: theme.colors.border,
       },
       chatBubbleMe: {
         backgroundColor: isDark
@@ -252,7 +248,7 @@ export function GSChatDetails({
         position: "absolute" as const,
         bottom: 0,
         paddingVertical: 10,
-        backgroundColor: isDark ? theme.colors.background : theme.colors.muted,
+        backgroundColor: "#18181f",
         borderTopWidth: 1,
         borderTopColor: theme.colors.border,
       },

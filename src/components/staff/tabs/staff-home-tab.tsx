@@ -644,8 +644,8 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
       </View>
     </ModalSheet>
 
-    <ModalSheet open={showMenuModal} onClose={() => setShowMenuModal(false)} maxHeightPct={1}>
-      <BottlesTab onClose={() => setShowMenuModal(false)} />
+    <ModalSheet open={showMenuModal} onClose={() => setShowMenuModal(false)} maxHeightPct={1} showHeader={false}>
+      <BottlesTab userRole={userRole} onClose={() => setShowMenuModal(false)} />
     </ModalSheet>
     </>
   )

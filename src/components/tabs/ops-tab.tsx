@@ -27,7 +27,7 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
-import { useLocalStorageState } from "@/components/guest/guest-storage"
+import { useLiveFeed, type LiveFeedItem } from "@/contexts/live-feed-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -35,6 +35,7 @@ import { HapticPressable } from "@/components/ui/haptic-pressable"
 import { Input } from "@/components/ui/input"
 import { ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
+import { SlowFlowText } from "@/components/ui/slow-flow-text"
 import { canManageLiveFeed, canViewLiveFeed } from "@/constants/role-permissions"
 import { useToast } from "@/hooks/use-toast"
 import { resolveAvatar } from "@/lib/assets"
@@ -45,16 +46,6 @@ import type { MapTabUserRole } from "./map-tab"
 export interface OpsTabProps {
   /** When door or promoter, Ops tab is hidden; if reached, shows access restricted. */
   userRole?: MapTabUserRole
-}
-
-interface FeedItem {
-  id: string
-  type: "order" | "arrival" | "alert" | "geo"
-  title: string
-  description: string
-  time: string
-  table?: number
-  avatar?: string
 }
 
 /**
@@ -412,28 +403,17 @@ function RevenueDonutChart({
   )
 }
 
-const LIVE_FEED_STORAGE_KEY = "vipsync_ops_live_feed_v1"
-
-const defaultFeed: FeedItem[] = [
-  { id: "1", type: "order", title: "New Order", description: "2x Ace of Spades - Table 1", time: "Just now", table: 1 },
-  { id: "2", type: "arrival", title: "VIP Arrived", description: "Marcus Chen checked in at entrance", time: "2 min ago", avatar: "/images/avatars/man2.png" },
-  { id: "3", type: "geo", title: "Geo-fence Alert", description: "Williams Party within 500m", time: "5 min ago" },
-  { id: "4", type: "order", title: "Order Completed", description: "3x Dom Perignon delivered - Table 6", time: "8 min ago", table: 6 },
-  { id: "5", type: "alert", title: "Capacity Warning", description: "Table 2 is over capacity", time: "10 min ago", table: 2 },
-  { id: "6", type: "arrival", title: "Guest Expected", description: "Johnson Party - ETA 15 minutes", time: "12 min ago" },
-]
-
 const TOP_LIVE_FEED = 5
 
-type FeedType = FeedItem["type"]
+type FeedType = LiveFeedItem["type"]
 
 export function OpsTab({ userRole }: OpsTabProps = {}) {
   const { theme } = useTheme()
   const { toast } = useToast()
+  const { feedItems, setFeedItems, addFeedItem } = useLiveFeed()
   const [activeFilter, setActiveFilter] = React.useState<string>("all")
   const [showAllFeedSheet, setShowAllFeedSheet] = React.useState(false)
   const [showAddFeedSheet, setShowAddFeedSheet] = React.useState(false)
-  const [feedItems, setFeedItems] = useLocalStorageState<FeedItem[]>(LIVE_FEED_STORAGE_KEY, defaultFeed)
   const [addFeedForm, setAddFeedForm] = React.useState<{ type: FeedType; title: string; description: string; time: string; table: string }>({
     type: "order",
     title: "",
@@ -454,8 +434,10 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
   const comparisonPeriod = "vs last Saturday"
 
   const filteredFeed = React.useMemo(() => {
-    if (activeFilter === "all") return feedItems
-    return feedItems.filter((item) => item.type === activeFilter)
+    const list = activeFilter === "all" ? feedItems : feedItems.filter((item) => item.type === activeFilter)
+    const getSortKey = (item: LiveFeedItem) =>
+      item.createdAt ?? (item.id.startsWith("feed-") ? parseInt(item.id.replace("feed-", ""), 10) || 0 : 0)
+    return [...list].sort((a, b) => getSortKey(b) - getSortKey(a))
   }, [activeFilter, feedItems])
 
   const topFeed = React.useMemo(() => filteredFeed.slice(0, TOP_LIVE_FEED), [filteredFeed])
@@ -468,18 +450,16 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
       return
     }
     const tableNum = addFeedForm.table.trim() ? parseInt(addFeedForm.table.trim(), 10) : undefined
-    const newItem: FeedItem = {
-      id: `feed-${Date.now()}`,
+    addFeedItem({
       type: addFeedForm.type,
       title,
       description: description || "—",
       time: addFeedForm.time.trim() || "Just now",
       ...(Number.isFinite(tableNum) && tableNum != null ? { table: tableNum } : {}),
-    }
-    setFeedItems((prev) => [newItem, ...prev])
+    })
     setShowAddFeedSheet(false)
     setAddFeedForm({ type: "order", title: "", description: "", time: "Just now", table: "" })
-    toast({ title: "Feed added", description: `${newItem.title} has been added to Live Feed.` })
+    toast({ title: "Feed added", description: `${title} has been added to Live Feed.` })
   }
 
   if (!canViewFeed) {
@@ -825,7 +805,7 @@ function QuickStatCard({
   )
 }
 
-function FeedItemRow({ item, index }: { item: FeedItem; index: number }) {
+function FeedItemRow({ item, index }: { item: LiveFeedItem; index: number }) {
   const { theme } = useTheme()
   const config =
     item.type === "arrival"
@@ -881,12 +861,18 @@ function FeedItemRow({ item, index }: { item: FeedItem; index: number }) {
           <View style={{ flex: 1, minWidth: 0 }}>
             <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 12 }}>
               <View style={{ flex: 1, minWidth: 0 }}>
-                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold" }} numberOfLines={1}>
+                <SlowFlowText
+                  containerStyle={{ alignSelf: "stretch" }}
+                  style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold" }}
+                >
                   {item.title}
-                </Text>
-                <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }} numberOfLines={1}>
+                </SlowFlowText>
+                <SlowFlowText
+                  containerStyle={{ alignSelf: "stretch" }}
+                  style={{ color: theme.colors.mutedForeground, fontSize: 12 }}
+                >
                   {item.description}
-                </Text>
+                </SlowFlowText>
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 4, flexWrap: "wrap" }}>
                   {item.table ? (
                     <Text style={{ color: theme.colors.foreground, fontSize: 11, fontFamily: "Orbitron_700Bold" }}>
