@@ -12,7 +12,7 @@ import {
 
 import { useTheme } from "@/theme/theme-provider"
 
-interface ChatItem {
+export interface ChatItem {
   id: number | string
   img: string
   name: string
@@ -31,6 +31,8 @@ interface ChatHomeProps {
   onProfilePress?: (chat: ChatItem) => void
   /** When true, Main Ops is excluded from the chat list (e.g. user/guest mode). */
   hideMainOps?: boolean
+  /** When provided, use this list instead of the default hardcoded chats (e.g. from API). */
+  chats?: ChatItem[] | null
 }
 
 function displayTime(timestamp: string): string {
@@ -89,13 +91,14 @@ export function GSChatHome({
   onGroupPress,
   onProfilePress,
   hideMainOps = false,
+  chats: chatsProp,
 }: ChatHomeProps) {
   const colorScheme = useColorScheme()
   const { theme } = useTheme()
   const [active, setActive] = React.useState(1)
   const [searchQuery, setSearchQuery] = React.useState("")
 
-  const allChatData: ChatItem[] = [
+  const defaultChatData: ChatItem[] = [
     {
       id: "main-ops",
       img: "https://i.pravatar.cc/300?u=mainops@geekspark.com",
@@ -164,6 +167,7 @@ export function GSChatHome({
     },
   ]
 
+  const allChatData = chatsProp != null ? chatsProp : defaultChatData
   const chatData = hideMainOps
     ? allChatData.filter((item) => item.name !== MAIN_OPS_NAME)
     : allChatData

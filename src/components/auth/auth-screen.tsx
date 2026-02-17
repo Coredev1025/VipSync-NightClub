@@ -5,13 +5,10 @@ import {
     Briefcase,
     Camera,
     CheckCircle,
-    ChevronDown,
     ChevronLeft,
     Crown,
     DoorOpen,
     Gift,
-    Lock,
-    Phone,
     Shield,
     Sparkles,
     User,
@@ -22,10 +19,8 @@ import * as React from "react"
 import {
     Alert,
     KeyboardAvoidingView,
-    Modal,
     Platform,
     Pressable,
-    ScrollView,
     StyleSheet,
     Text,
     TextInput,
@@ -43,10 +38,12 @@ import Animated, {
 
 import { Button } from "@/components/ui/button"
 import { VIPsyncLogo } from "@/components/ui/vipsync-logo"
+import { useGoogleAuth } from "@/hooks/use-google-auth"
 import { images } from "@/lib/assets"
+import { getProfile } from "@/lib/profile-sync"
 import { useTheme } from "@/theme/theme-provider"
 
-type AuthStep = "welcome" | "phone" | "otp" | "mode" | "role" | "profile"
+type AuthStep = "welcome" | "mode" | "role" | "profile"
 export type UserRole = "promoter" | "door" | "manager" | "owner"
 export type SignupMode = "pro" | "user"
 
@@ -204,217 +201,6 @@ function AuthBackButton({ onPress }: AuthBackButtonProps) {
   )
 }
 
-/** Country code option for phone input. */
-interface CountryOption {
-  code: string
-  label: string
-  /** Max length of national number (digits only). */
-  maxLength: number
-  /** Min length to consider valid (e.g. 10 for US). */
-  minLength: number
-}
-
-const COUNTRY_OPTIONS: CountryOption[] = [
-  { code: "+1", label: "United States / Canada", maxLength: 10, minLength: 10 },
-  { code: "+44", label: "United Kingdom", maxLength: 11, minLength: 10 },
-  { code: "+81", label: "Japan", maxLength: 10, minLength: 10 },
-  { code: "+49", label: "Germany", maxLength: 11, minLength: 10 },
-  { code: "+33", label: "France", maxLength: 9, minLength: 9 },
-  { code: "+86", label: "China", maxLength: 11, minLength: 11 },
-  { code: "+91", label: "India", maxLength: 10, minLength: 10 },
-  { code: "+61", label: "Australia", maxLength: 9, minLength: 9 },
-  { code: "+55", label: "Brazil", maxLength: 11, minLength: 10 },
-  { code: "+52", label: "Mexico", maxLength: 10, minLength: 10 },
-  { code: "+34", label: "Spain", maxLength: 9, minLength: 9 },
-  { code: "+39", label: "Italy", maxLength: 10, minLength: 9 },
-  { code: "+82", label: "South Korea", maxLength: 10, minLength: 9 },
-  { code: "+7", label: "Russia / Kazakhstan", maxLength: 10, minLength: 10 },
-  { code: "+31", label: "Netherlands", maxLength: 9, minLength: 9 },
-  { code: "+41", label: "Switzerland", maxLength: 9, minLength: 9 },
-  { code: "+971", label: "UAE", maxLength: 9, minLength: 9 },
-  { code: "+65", label: "Singapore", maxLength: 8, minLength: 8 },
-  { code: "+27", label: "South Africa", maxLength: 9, minLength: 9 },
-  { code: "+234", label: "Nigeria", maxLength: 10, minLength: 10 },
-]
-
-function getCountryByCode(code: string): CountryOption {
-  return COUNTRY_OPTIONS.find((c) => c.code === code) ?? COUNTRY_OPTIONS[0]
-}
-
-function parseDigits(s: string): string {
-  return s.replace(/\D/g, "")
-}
-
-/** Format US/CA (+1) as (XXX) XXX-XXXX. */
-function formatUS(digits: string): string {
-  const d = digits.slice(0, 10)
-  if (d.length <= 3) return d
-  if (d.length <= 6) return `(${d.slice(0, 3)}) ${d.slice(3)}`
-  return `(${d.slice(0, 3)}) ${d.slice(3, 6)}-${d.slice(6)}`
-}
-
-/** Format other countries: groups of 3 digits. */
-function formatGeneric(digits: string, maxLen: number): string {
-  const d = digits.slice(0, maxLen)
-  if (d.length <= 3) return d
-  const parts: string[] = []
-  for (let i = 0; i < d.length; i += 3) parts.push(d.slice(i, i + 3))
-  return parts.join(" ")
-}
-
-function formatPhoneDisplay(digits: string, countryCode: string): string {
-  const country = getCountryByCode(countryCode)
-  const d = digits.slice(0, country.maxLength)
-  if (countryCode === "+1") return formatUS(d)
-  return formatGeneric(d, country.maxLength)
-}
-
-interface PhoneInputWithCountryProps {
-  glow: GlowTone
-  icon: React.ReactNode
-  countryCode: string
-  onCountryCodeChange: (code: string) => void
-  value: string
-  onChangeText: (digits: string) => void
-  placeholder?: string
-  accessibilityLabel?: string
-}
-
-function PhoneInputWithCountry({
-  glow,
-  icon,
-  countryCode,
-  onCountryCodeChange,
-  value: digits,
-  onChangeText,
-  placeholder = "555 000 0000",
-  accessibilityLabel = "Phone number",
-}: PhoneInputWithCountryProps) {
-  const { theme } = useTheme()
-  const glowColor = getGlowColor(theme, glow)
-  const isFocused = useSharedValue(0)
-  const [showCountryPicker, setShowCountryPicker] = React.useState(false)
-  const country = getCountryByCode(countryCode)
-  const displayValue = formatPhoneDisplay(digits, countryCode)
-  const isValid = digits.length >= country.minLength
-  const isInvalid = digits.length > 0 && digits.length < country.minLength
-
-  const normalBorderColorHex = `${glowColor}70`
-  const lighterGlowColor = lightenColor(glowColor, 0.5)
-  const focusedBorderColorHex = `${lighterGlowColor}CC`
-  const validBorderColorHex = `${theme.colors.neonGreen}CC`
-  const invalidBorderColorHex = `${theme.colors.neonPink}99`
-  const normalBorderColor = hexWithAlphaToRgba(normalBorderColorHex)
-  const focusedBorderColor = hexWithAlphaToRgba(focusedBorderColorHex)
-  const validBorderColor = hexWithAlphaToRgba(validBorderColorHex)
-  const invalidBorderColor = hexWithAlphaToRgba(invalidBorderColorHex)
-  const validationState = useSharedValue(0)
-  React.useEffect(() => {
-    validationState.value = isValid ? 2 : isInvalid ? 1 : 0
-  }, [isValid, isInvalid, validationState])
-
-  const handleChangeText = React.useCallback(
-    (text: string) => {
-      const next = parseDigits(text).slice(0, country.maxLength)
-      onChangeText(next)
-    },
-    [country.maxLength, onChangeText]
-  )
-
-  const handleFocus = React.useCallback(() => {
-    isFocused.value = withTiming(1, { duration: 200 })
-  }, [isFocused])
-  const handleBlur = React.useCallback(() => {
-    isFocused.value = withTiming(0, { duration: 200 })
-  }, [isFocused])
-
-  const animatedBorderStyle = useAnimatedStyle(() => {
-    "worklet"
-    const validationColor =
-      validationState.value === 2 ? validBorderColor : validationState.value === 1 ? invalidBorderColor : normalBorderColor
-    const borderColor = isFocused.value > 0.5 ? focusedBorderColor : validationColor
-    return { borderColor }
-  })
-
-  return (
-    <View style={{ gap: 6 }}>
-      <Animated.View style={[styles.neonField, animatedBorderStyle]}>
-        <View style={[styles.neonIcon, { backgroundColor: `${glowColor}1f`, borderColor: `${glowColor}55` }]}>
-          {icon}
-        </View>
-        <Pressable
-          onPress={() => setShowCountryPicker(true)}
-          style={({ pressed }) => [
-            styles.countryCodeTouch,
-            { opacity: pressed ? 0.8 : 1, borderRightColor: theme.colors.border },
-          ]}
-          accessibilityLabel="Select country code"
-          accessibilityRole="button"
-        >
-          <Text style={[styles.countryCodeText, { color: theme.colors.foreground }]}>{countryCode}</Text>
-          <ChevronDown size={16} color={theme.colors.mutedForeground} />
-        </Pressable>
-        <TextInput
-          accessibilityLabel={accessibilityLabel}
-          placeholder={placeholder}
-          placeholderTextColor={theme.colors.mutedForeground}
-          value={displayValue}
-          onChangeText={handleChangeText}
-          keyboardType="number-pad"
-          textContentType="telephoneNumber"
-          autoComplete="tel"
-          style={[styles.neonInput, styles.phoneInput, { color: theme.colors.foreground }]}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-        />
-      </Animated.View>
-
-      <Modal
-        visible={showCountryPicker}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setShowCountryPicker(false)}
-      >
-        <Pressable style={styles.countryPickerBackdrop} onPress={() => setShowCountryPicker(false)}>
-          <View style={[styles.countryPickerSheet, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
-            <View style={[styles.countryPickerHeader, { borderBottomColor: theme.colors.border }]}>
-              <Text style={[styles.countryPickerTitle, { color: theme.colors.foreground }]}>Country code</Text>
-              <Pressable onPress={() => setShowCountryPicker(false)} hitSlop={12}>
-                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 16 }}>Done</Text>
-              </Pressable>
-            </View>
-            <ScrollView
-              style={styles.countryPickerList}
-              keyboardShouldPersistTaps="handled"
-              showsVerticalScrollIndicator={false}
-            >
-              {COUNTRY_OPTIONS.map((opt) => (
-                <Pressable
-                  key={opt.code}
-                  onPress={() => {
-                    onCountryCodeChange(opt.code)
-                    setShowCountryPicker(false)
-                  }}
-                  style={({ pressed }) => [
-                    styles.countryPickerRow,
-                    { backgroundColor: pressed ? theme.colors.muted : "transparent" },
-                    opt.code === countryCode && { backgroundColor: `${theme.colors.neonCyan}22` },
-                  ]}
-                >
-                  <Text style={[styles.countryPickerCode, { color: theme.colors.foreground }]}>{opt.code}</Text>
-                  <Text style={[styles.countryPickerLabel, { color: theme.colors.mutedForeground }]} numberOfLines={1}>
-                    {opt.label}
-                  </Text>
-                </Pressable>
-              ))}
-            </ScrollView>
-          </View>
-        </Pressable>
-      </Modal>
-    </View>
-  )
-}
-
 interface NeonFieldProps {
   glow: GlowTone
   icon: React.ReactNode
@@ -524,61 +310,38 @@ function NeonField({
   )
 }
 
-interface OtpDigitProps {
-  index: number
-  value: string
-  glow: GlowTone
-  onChange: (index: number, value: string) => void
-  onBackspace: (index: number) => void
-  inputRef: (ref: TextInput | null) => void
-  isFirst: boolean
-}
-
-function OtpDigit({ index, value, glow, onChange, onBackspace, inputRef, isFirst }: OtpDigitProps) {
-  const { theme } = useTheme()
-  const glowColor = getGlowColor(theme, glow)
-
-  return (
-    <View
-      style={[
-        styles.otpBox,
-        {
-          borderColor: `${glowColor}70`,
-        },
-      ]}
-    >
-      <TextInput
-        ref={inputRef}
-        accessibilityLabel={`OTP digit ${index + 1}`}
-        value={value}
-        onChangeText={(v) => onChange(index, v)}
-        onKeyPress={({ nativeEvent }) => {
-          if (nativeEvent.key === "Backspace") onBackspace(index)
-        }}
-        keyboardType="number-pad"
-        maxLength={6}
-        textAlign="center"
-        textContentType={isFirst ? ("oneTimeCode" as any) : undefined}
-        autoComplete={isFirst ? ("sms-otp" as any) : undefined}
-        style={[styles.otpInput, { color: theme.colors.foreground }]}
-      />
-    </View>
-  )
-}
-
 export function AuthScreen({ onComplete }: AuthScreenProps) {
   const { theme } = useTheme()
   const [step, setStep] = React.useState<AuthStep>("welcome")
-  const [countryCode, setCountryCode] = React.useState("+1")
-  const [phoneDigits, setPhoneDigits] = React.useState("")
-  const [otp, setOtp] = React.useState(["", "", "", "", "", ""])
   const [signupMode, setSignupMode] = React.useState<SignupMode | null>(null)
   const [name, setName] = React.useState("")
   const [selectedRole, setSelectedRole] = React.useState<UserRole | null>(null)
   const [referralCode, setReferralCode] = React.useState("")
   const [avatarUri, setAvatarUri] = React.useState<string | null>(null)
 
-  const otpRefs = React.useRef<Array<TextInput | null>>([])
+  // Supabase OAuth flow (Google via Supabase) — useEffect in hook handles getProfile when user is set
+  const { signInWithGoogle, isLoading: isGoogleLoading, error: googleError, user } = useGoogleAuth(
+    () => setStep("mode")
+  )
+
+  // If user already has a session (e.g. returning user), restore stored mode/role and go to app, or show mode page
+  React.useEffect(() => {
+    if (!user) return
+    let cancelled = false
+    getProfile()
+      .then((profile) => {
+        if (cancelled) return
+        if (profile?.mode === "pro" || profile?.mode === "user") {
+          onComplete(profile.mode as SignupMode, profile.pro_role as UserRole | undefined)
+        } else {
+          setStep("mode")
+        }
+      })
+      .catch(() => setStep("mode"))
+    return () => {
+      cancelled = true
+    }
+  }, [user, onComplete])
 
   React.useEffect(() => {
     async function requestPermissions() {
@@ -611,37 +374,6 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
     }
   }
 
-  function handleOtpChange(index: number, value: string) {
-    const digits = value.replace(/\D/g, "")
-    if (!digits) {
-      const next = [...otp]
-      next[index] = ""
-      setOtp(next)
-      return
-    }
-
-    // Handle paste / OS autofill.
-    if (digits.length > 1) {
-      const next = [...otp]
-      for (let i = 0; i < digits.length && index + i < 6; i += 1) next[index + i] = digits[i]
-      setOtp(next)
-      const nextIndex = Math.min(5, index + digits.length - 1)
-      otpRefs.current[nextIndex]?.focus?.()
-      return
-    }
-
-    const next = [...otp]
-    next[index] = digits
-    setOtp(next)
-    if (digits && index < 5) otpRefs.current[index + 1]?.focus?.()
-  }
-
-  function handleOtpBackspace(index: number) {
-    if (otp[index]) return
-    if (index <= 0) return
-    otpRefs.current[index - 1]?.focus?.()
-  }
-
   function renderStepContent() {
     switch (step) {
       case "welcome":
@@ -671,10 +403,35 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
             </View>
 
             <View style={styles.block}>
-              <Button variant="gradient" size="lg" onPress={() => setStep("phone")} style={styles.full}>
+              {googleError ? (
+                <Text style={[styles.p, { color: theme.colors.neonPink, marginBottom: 8 }]}>
+                  {googleError}
+                </Text>
+              ) : null}
+              <Button
+                variant="solid"
+                tone="neutral"
+                size="lg"
+                onPress={signInWithGoogle}
+                disabled={isGoogleLoading}
+                style={[styles.full, { backgroundColor: "#fff", borderColor: "#e0e0e0", marginBottom: 12 }]}
+              >
                 <View style={styles.rowCenter}>
-                  <Phone size={18} color="#fff" />
-                  <Text style={styles.btnTextWhite}>Continue with Phone</Text>
+                  <Text style={[styles.btnText, { color: "#333" }]}>
+                    {isGoogleLoading ? "Signing in…" : "Continue with Google"}
+                  </Text>
+                  {!isGoogleLoading && <ArrowRight size={18} color="#333" />}
+                </View>
+              </Button>
+              <Button
+                variant="gradient"
+                size="lg"
+                onPress={() => setStep("mode")}
+                style={[styles.full, { backgroundColor: "#1877F2", marginBottom: 12 }]}
+              >
+                <View style={styles.rowCenter}>
+                  <Text style={styles.btnTextWhite}>Continue with Facebook</Text>
+                  <ArrowRight size={18} color="#fff" />
                 </View>
               </Button>
 
@@ -702,107 +459,6 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
             <Text style={[styles.legal, { color: theme.colors.mutedForeground }]}>
               By continuing, you agree to our Terms of Service and Privacy Policy
             </Text>
-          </View>
-        )
-
-      case "phone":
-        return (
-          <View key="phone" style={styles.stepWrap}>
-          <View style={styles.block}>
-            <StepHeader
-              glow="pink"
-              icon={<Phone size={22} color={theme.colors.neonPink} />}
-              title="Enter your phone"
-              subtitle="We'll send you a verification code"
-            />
-
-            <View style={{ gap: 14 }}>
-              <PhoneInputWithCountry
-                glow="pink"
-                icon={<Phone size={18} color={theme.colors.neonPink} />}
-                countryCode={countryCode}
-                onCountryCodeChange={setCountryCode}
-                value={phoneDigits}
-                onChangeText={setPhoneDigits}
-                placeholder={getCountryByCode(countryCode).code === "+1" ? "(555) 000-0000" : "555 000 0000"}
-                accessibilityLabel="Phone number"
-              />
-              <Button
-                variant="gradient"
-                size="lg"
-                onPress={() => setStep("otp")}
-                disabled={phoneDigits.length < getCountryByCode(countryCode).minLength}
-                style={styles.full}
-              >
-                <View style={styles.rowCenter}>
-                  <Text style={styles.btnTextWhite}>Send Code</Text>
-                  <ArrowRight size={18} color="#fff" />
-                </View>
-              </Button>
-            </View>
-          </View>
-          </View>
-        )
-
-      case "otp":
-        return (
-          <View key="otp" style={styles.stepWrap}>
-          <View style={styles.block}>
-            <StepHeader
-              glow="cyan"
-              icon={<Lock size={22} color={theme.colors.neonCyan} />}
-              title="Verify your phone"
-              subtitle={`Enter the 6-digit code sent to ${phoneDigits.length >= getCountryByCode(countryCode).minLength ? `${countryCode} ${formatPhoneDisplay(phoneDigits, countryCode)}` : "your phone"}`}
-            />
-
-            <View style={styles.otpRow}>
-              {otp.map((digit, idx) => (
-                <Animated.View
-                  key={idx}
-                  entering={FadeIn.delay(idx * 50).duration(200).springify()}
-                >
-                  <OtpDigit
-                    index={idx}
-                    value={digit}
-                    glow="cyan"
-                    onChange={(i, v) => handleOtpChange(i, v)}
-                    onBackspace={(i) => handleOtpBackspace(i)}
-                    isFirst={idx === 0}
-                    inputRef={(r) => {
-                      otpRefs.current[idx] = r
-                    }}
-                  />
-                </Animated.View>
-              ))}
-            </View>
-
-            <Button
-              variant="gradient"
-              size="lg"
-              onPress={() => setStep("mode")}
-              disabled={otp.some((d) => !d)}
-              style={styles.full}
-            >
-              <View style={styles.rowCenter}>
-                <Text style={styles.btnTextWhite}>Verify</Text>
-                <Lock size={18} color="#fff" />
-              </View>
-            </Button>
-
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Resend code"
-              onPress={() => {
-                // no-op placeholder (hook this to your SMS provider)
-              }}
-              style={({ pressed }) => [styles.resendBtn, { opacity: pressed ? 0.75 : 1 }]}
-            >
-              <View style={styles.rowCenterTight}>
-                <Sparkles size={14} color={theme.colors.neonCyan} />
-                <Text style={[styles.resendText, { color: theme.colors.neonCyan }]}>Resend code</Text>
-              </View>
-            </Pressable>
-          </View>
           </View>
         )
 
@@ -1135,9 +791,7 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
             ) : (
               <AuthBackButton
                 onPress={() => {
-                  if (step === "phone") setStep("welcome")
-                  if (step === "otp") setStep("phone")
-                  if (step === "mode") setStep("otp")
+                  if (step === "mode") setStep("welcome")
                   if (step === "role") setStep("mode")
                   if (step === "profile") setStep(signupMode === "user" ? "mode" : "role")
                 }}
@@ -1300,40 +954,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontFamily: "Orbitron_800ExtraBold",
   },
-  otpRow: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    gap: 8,
-    marginTop: 4,
-    marginBottom: 6,
-  },
-  otpBox: {
-    width: 44,
-    height: 54,
-    borderRadius: 16,
-    borderWidth: 1,
-    backgroundColor: "rgba(14, 9, 22, 0.55)",
-    overflow: "hidden",
-    justifyContent: "center",
-  },
-  otpInput: {
-    fontSize: 18,
-    fontFamily: "Inter_400Regular",
-    paddingVertical: 0,
-  },
-  resendBtn: {
-    alignSelf: "center",
-    marginTop: 6,
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 999,
-    backgroundColor: "rgba(10, 6, 18, 0.25)",
-  },
-  resendText: {
-    fontSize: 12,
-    fontFamily: "Orbitron_800ExtraBold",
-    letterSpacing: 0.2,
-  },
   roleGrid: {
     flexDirection: "column",
     gap: 14,
@@ -1409,70 +1029,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontFamily: "Inter_400Regular",
     paddingVertical: 0,
-  },
-  countryCodeTouch: {
-    flexDirection: "row",
-    alignItems: "center",
-    gap: 4,
-    paddingRight: 12,
-    borderRightWidth: 1,
-    marginRight: 4,
-  },
-  countryCodeText: {
-    fontSize: 14,
-    fontFamily: "Inter_600SemiBold",
-  },
-  phoneInput: {
-    flex: 1,
-    minWidth: 0,
-  },
-  phoneHint: {
-    fontSize: 12,
-    fontFamily: "Inter_400Regular",
-    marginLeft: 4,
-  },
-  countryPickerBackdrop: {
-    flex: 1,
-    backgroundColor: "rgba(0,0,0,0.5)",
-    justifyContent: "flex-end",
-  },
-  countryPickerSheet: {
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    borderWidth: 1,
-    maxHeight: "70%",
-  },
-  countryPickerHeader: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 16,
-    borderBottomWidth: 1,
-  },
-  countryPickerTitle: {
-    fontSize: 18,
-    fontFamily: "Orbitron_700Bold",
-  },
-  countryPickerList: {
-    maxHeight: 360,
-  },
-  countryPickerRow: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingHorizontal: 20,
-    paddingVertical: 14,
-    gap: 12,
-  },
-  countryPickerCode: {
-    fontSize: 16,
-    fontFamily: "Inter_700Bold",
-    minWidth: 44,
-  },
-  countryPickerLabel: {
-    flex: 1,
-    fontSize: 14,
-    fontFamily: "Inter_400Regular",
   },
   rolePill: {
     marginTop: 10,

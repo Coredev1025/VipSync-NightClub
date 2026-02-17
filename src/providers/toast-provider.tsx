@@ -8,6 +8,8 @@ export interface ToastOptions {
   title: string
   description?: string
   durationMs?: number
+  /** e.g. "destructive" for error styling; optional, UI can ignore if not supported */
+  variant?: string
 }
 
 export interface ToastContextValue {

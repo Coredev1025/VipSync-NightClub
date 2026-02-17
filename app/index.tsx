@@ -1,4 +1,4 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"
+import { useFocusEffect } from "expo-router"
 import * as React from "react"
 import { View } from "react-native"
 
@@ -9,11 +9,11 @@ import { GuestShell } from "@/components/guest/guest-shell"
 import { MobileFrame } from "@/components/mobile-frame"
 import { SplashScreen } from "@/components/splash-screen"
 import type { MapTabUserRole } from "@/components/tabs"
-type AppState = "splash" | "auth" | "app"
+import { setAccessToken } from "@/lib/api"
+import { getProfile, patchProfile } from "@/lib/profile-sync"
+import { supabase } from "@/lib/supabase"
 
-const AUTH_KEY = "vipsync_auth"
-const AUTH_MODE_KEY = "vipsync_auth_mode"
-const AUTH_PRO_ROLE_KEY = "vipsync_auth_pro_role"
+type AppState = "splash" | "auth" | "app"
 
 const VALID_PRO_ROLES: MapTabUserRole[] = ["promoter", "door", "manager", "owner"]
 
@@ -22,66 +22,56 @@ export default function HomeScreen() {
   const [authMode, setAuthMode] = React.useState<SignupMode | null>(null)
   const [userRole, setUserRole] = React.useState<MapTabUserRole | undefined>(undefined)
 
-  React.useEffect(() => {
-    Promise.all([
-      AsyncStorage.getItem(AUTH_KEY),
-      AsyncStorage.getItem(AUTH_MODE_KEY),
-      AsyncStorage.getItem(AUTH_PRO_ROLE_KEY),
-    ])
-      .then(([isAuth, mode, proRole]) => {
-        if (isAuth === "true") {
-          setAppState("app")
-          setAuthMode((mode === "user" || mode === "pro" ? mode : "pro") as SignupMode)
-          if (mode === "pro" && proRole && VALID_PRO_ROLES.includes(proRole as MapTabUserRole)) {
-            setUserRole(proRole as MapTabUserRole)
+  const refreshSessionAndState = React.useCallback(() => {
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (!session) return
+      getProfile()
+        .then((profile) => {
+          if (profile?.mode === "pro" || profile?.mode === "user") {
+            setAuthMode(profile.mode as SignupMode)
+            setUserRole(profile.pro_role as MapTabUserRole | undefined)
+            setAppState("app")
           } else {
-            setUserRole(undefined)
+            setAppState("auth")
           }
-        }
-      })
-      .catch(() => {})
+        })
+        .catch(() => setAppState("auth"))
+    })
   }, [])
 
+  // On mount: if user has session (e.g. app restarted), go to app
+  React.useEffect(() => {
+    refreshSessionAndState()
+  }, [refreshSessionAndState])
+
+  // When returning from OAuth callback, index may already be mounted; re-check session on focus so we show app
+  useFocusEffect(
+    React.useCallback(() => {
+      refreshSessionAndState()
+    }, [refreshSessionAndState])
+  )
+
   const handleSplashComplete = React.useCallback(() => {
-    Promise.all([
-      AsyncStorage.getItem(AUTH_KEY),
-      AsyncStorage.getItem(AUTH_MODE_KEY),
-      AsyncStorage.getItem(AUTH_PRO_ROLE_KEY),
-    ])
-      .then(([isAuth, mode, proRole]) => {
-        if (isAuth === "true") {
-          setAppState("app")
-          setAuthMode((mode === "user" || mode === "pro" ? mode : "pro") as SignupMode)
-          if (mode === "pro" && proRole && VALID_PRO_ROLES.includes(proRole as MapTabUserRole)) {
-            setUserRole(proRole as MapTabUserRole)
-          } else {
-            setUserRole(undefined)
-          }
-        } else {
-          setAppState("auth")
-        }
-      })
-      .catch(() => setAppState("auth"))
+    setAppState("auth")
   }, [])
 
   const handleAuthComplete = React.useCallback((mode: SignupMode, proRole?: UserRole) => {
-    AsyncStorage.setItem(AUTH_KEY, "true").catch(() => {})
-    AsyncStorage.setItem(AUTH_MODE_KEY, mode).catch(() => {})
     if (mode === "pro" && proRole) {
-      AsyncStorage.setItem(AUTH_PRO_ROLE_KEY, proRole).catch(() => {})
       setUserRole(proRole as MapTabUserRole)
     } else {
-      AsyncStorage.removeItem(AUTH_PRO_ROLE_KEY).catch(() => {})
       setUserRole(undefined)
     }
     setAuthMode(mode)
     setAppState("app")
+    // Persist selected mode and role to backend profile so it can be restored on next launch
+    patchProfile({
+      mode,
+      pro_role: mode === "pro" ? proRole : undefined,
+    }).catch(() => {})
   }, [])
 
   const handleLogout = React.useCallback(() => {
-    AsyncStorage.removeItem(AUTH_KEY).catch(() => {})
-    AsyncStorage.removeItem(AUTH_MODE_KEY).catch(() => {})
-    AsyncStorage.removeItem(AUTH_PRO_ROLE_KEY).catch(() => {})
+    setAccessToken(null)
     setAuthMode(null)
     setUserRole(undefined)
     setAppState("auth")
@@ -104,7 +94,6 @@ export default function HomeScreen() {
           <AppShell onLogout={handleLogout} userRole={userRole} />
         </View>
       ) : null}
-      {/* User mode: guest experience — all pages from guest/tabs (GuestShell) */}
       {appState === "app" && authMode === "user" ? (
         <View style={{ flex: 1 }}>
           <GuestShell onLogout={handleLogout} />

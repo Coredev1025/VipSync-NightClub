@@ -9,7 +9,7 @@ import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
 import { Camera, Pencil, Plus, Trash2, Wine, X } from "lucide-react-native"
 import * as React from "react"
-import { Alert, ScrollView, StyleSheet, Text, View } from "react-native"
+import { ActivityIndicator, Alert, ScrollView, StyleSheet, Text, View } from "react-native"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
 import { Badge } from "@/components/ui/badge"
@@ -18,6 +18,7 @@ import { Card } from "@/components/ui/card"
 import { HapticPressable } from "@/components/ui/haptic-pressable"
 import { Input } from "@/components/ui/input"
 import { ModalSheet } from "@/components/ui/modal"
+import { useToast } from "@/hooks/use-toast"
 
 export interface BottlesTabProps {
   onClose?: () => void
@@ -28,9 +29,15 @@ export interface BottlesTabProps {
 export function BottlesTab({ onClose, userRole }: BottlesTabProps) {
   const insets = useSafeAreaInsets()
   const { theme } = useTheme()
-  const { bottles, addBottle, updateBottle, deleteBottle } = useBottles()
+  const { toast } = useToast()
+  const { bottles, addBottle, updateBottle, deleteBottle, isLoading, error, refetch, isApiConnected } = useBottles()
   const canManage = canManageBottlesAndStock(userRole)
   const [formOpen, setFormOpen] = React.useState(false)
+
+  // Refetch when tab is shown so we load bottles after sign-in (token may not have been set on initial app load)
+  React.useEffect(() => {
+    refetch()
+  }, [refetch])
   const [editingId, setEditingId] = React.useState<string | null>(null)
   const [name, setName] = React.useState("")
   const [price, setPrice] = React.useState("")
@@ -77,22 +84,33 @@ export function BottlesTab({ onClose, userRole }: BottlesTabProps) {
     }
   }
 
-  function handleSave() {
+  async function handleSave() {
     const priceNum = Number(price)
     const stockNum = Number(stock)
     if (!name.trim() || !Number.isFinite(priceNum) || priceNum < 0 || !Number.isFinite(stockNum) || stockNum < 0) return
     const payload = { name: name.trim(), price: priceNum, stock: stockNum, imageUri: imageUri ?? undefined }
-    if (editingId) {
-      updateBottle(editingId, payload)
-    } else {
-      addBottle(payload)
+    try {
+      if (editingId) {
+        await updateBottle(editingId, payload)
+        toast({ title: "Saved", description: "Bottle updated." })
+      } else {
+        await addBottle(payload)
+        toast({ title: "Added", description: "Bottle created." })
+      }
+      closeForm()
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to save bottle.", variant: "destructive" })
     }
-    closeForm()
   }
 
-  function handleDelete(id: string) {
-    deleteBottle(id)
-    if (editingId === id) closeForm()
+  async function handleDelete(id: string) {
+    try {
+      await deleteBottle(id)
+      if (editingId === id) closeForm()
+      toast({ title: "Deleted", description: "Bottle removed." })
+    } catch (e) {
+      toast({ title: "Error", description: e instanceof Error ? e.message : "Failed to delete bottle.", variant: "destructive" })
+    }
   }
 
   const isModalStyle = Boolean(onClose)
@@ -147,11 +165,24 @@ export function BottlesTab({ onClose, userRole }: BottlesTabProps) {
             )}
           </View>
         )}
-        {bottles.length === 0 ? (
+        {error && isApiConnected ? (
+          <View style={styles.errorWrap}>
+            <Text style={[styles.errorText, { color: theme.colors.neonPink }]}>{error}</Text>
+            <Button onPress={() => refetch()} size="sm">
+              <Text style={{ color: theme.colors.foreground }}>Retry</Text>
+            </Button>
+          </View>
+        ) : null}
+        {isLoading && isApiConnected ? (
+          <View style={styles.loadingWrap}>
+            <ActivityIndicator size="large" color={theme.colors.neonCyan} />
+            <Text style={[styles.loadingText, { color: theme.colors.mutedForeground }]}>Loading bottles…</Text>
+          </View>
+        ) : bottles.length === 0 && !isLoading ? (
           <Text style={[styles.empty, { color: theme.colors.mutedForeground }]}>
             No bottles yet. Tap Add to create one.
           </Text>
-        ) : (
+        ) : bottles.length > 0 ? (
           bottles.map((b) => (
             <Card key={b.id} style={[styles.card, { backgroundColor: theme.colors.card, borderColor: theme.colors.border }]}>
               <View style={styles.cardImageWrap}>
@@ -189,7 +220,7 @@ export function BottlesTab({ onClose, userRole }: BottlesTabProps) {
               )}
             </Card>
           ))
-        )}
+        ) : null}
       </ScrollView>
 
       <ModalSheet open={formOpen} onClose={closeForm} maxHeightPct={1}>
@@ -443,5 +474,22 @@ const styles = StyleSheet.create({
     justifyContent: "flex-end",
     gap: 12,
     marginTop: 16,
+  },
+  errorWrap: {
+    paddingVertical: 16,
+    alignItems: "center",
+    gap: 12,
+  },
+  errorText: {
+    fontSize: 14,
+    textAlign: "center",
+  },
+  loadingWrap: {
+    paddingVertical: 24,
+    alignItems: "center",
+    gap: 12,
+  },
+  loadingText: {
+    fontSize: 14,
   },
 })

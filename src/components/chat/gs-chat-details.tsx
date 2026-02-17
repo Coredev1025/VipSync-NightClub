@@ -66,6 +66,8 @@ export interface ChatDetailsProps {
   onCameraPress?: () => void
   onSendMessage?: (message: string) => void
   onEmojiSelect?: (emoji: string) => void
+  /** When provided, messages are controlled by parent (e.g. from API). Send only calls onSendMessage. */
+  messages?: ChatMessage[] | null
   initialMessages?: ChatMessage[]
   emojiToInsert?: string
   onOrderSynced?: (order: ChatOrderFromMessage) => void
@@ -93,6 +95,7 @@ export function GSChatDetails({
   onCameraPress,
   onSendMessage,
   onEmojiSelect,
+  messages: controlledMessages,
   initialMessages,
   emojiToInsert,
   onOrderSynced,
@@ -103,19 +106,21 @@ export function GSChatDetails({
   const chatRef = React.useRef<FlatList>(null)
   const [options, setOptions] = React.useState(false)
   const [addToMapSynced, setAddToMapSynced] = React.useState(false)
-  const [chatData, setChatData] = React.useState<ChatMessage[]>(
-    initialMessages || [
-      { id: 1, msg: "Hey There Jason Holder. How can I help you today?", time: new Date().toISOString(), me: false },
-      { id: 2, msg: "Hello", time: new Date().toISOString(), me: true },
-      { id: 3, msg: "How are you?", time: new Date().toISOString(), me: true },
-      { id: 4, msg: "I m fine. WBU?", time: new Date().toISOString(), me: false },
-      { id: 5, msg: "Great. 😊😊😊😊", time: new Date().toISOString(), me: true },
-      { id: 6, msg: "Nice", time: new Date().toISOString(), me: false },
-      { id: 7, msg: "Send some pictures", time: new Date().toISOString(), me: false },
-      { id: 8, msg: "Sure. Sending right away", time: new Date().toISOString(), me: true },
-    ]
-  )
+  const defaultMessages: ChatMessage[] = [
+    { id: 1, msg: "Hey There Jason Holder. How can I help you today?", time: new Date().toISOString(), me: false },
+    { id: 2, msg: "Hello", time: new Date().toISOString(), me: true },
+    { id: 3, msg: "How are you?", time: new Date().toISOString(), me: true },
+    { id: 4, msg: "I m fine. WBU?", time: new Date().toISOString(), me: false },
+    { id: 5, msg: "Great. 😊😊😊😊", time: new Date().toISOString(), me: true },
+    { id: 6, msg: "Nice", time: new Date().toISOString(), me: false },
+    { id: 7, msg: "Send some pictures", time: new Date().toISOString(), me: false },
+    { id: 8, msg: "Sure. Sending right away", time: new Date().toISOString(), me: true },
+  ]
+  const [localChatData, setLocalChatData] = React.useState<ChatMessage[]>(initialMessages ?? defaultMessages)
   const [message, setMessage] = React.useState("")
+
+  const isControlled = controlledMessages != null
+  const chatData = isControlled ? controlledMessages : localChatData
 
   const displayName = (contactName?.trim() || contactPhone || "Unknown").trim()
   const headerSubtitle = (contactName?.trim() && contactPhone ? contactPhone : null) ?? lastSeen
@@ -132,22 +137,27 @@ export function GSChatDetails({
 
   const sendMessage = () => {
     if (!message.trim()) return
-
+    const text = message
+    setMessage("")
+    if (isControlled) {
+      onSendMessage?.(text)
+      setTimeout(() => {
+        chatRef.current?.scrollToEnd({ animated: true })
+      }, 100)
+      return
+    }
     const newMessage: ChatMessage = {
-      id: chatData.length + 1,
-      msg: message,
+      id: localChatData.length + 1,
+      msg: text,
       time: new Date().toISOString(),
       me: true,
     }
-
-    setChatData((prev) => [...prev, newMessage])
-    onSendMessage?.(message)
-    setMessage("")
-
+    setLocalChatData((prev) => [...prev, newMessage])
+    onSendMessage?.(text)
     setTimeout(() => {
       chatRef.current?.scrollToIndex({
         animated: true,
-        index: chatData.length,
+        index: localChatData.length,
       })
     }, 200)
   }

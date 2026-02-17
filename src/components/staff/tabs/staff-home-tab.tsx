@@ -5,8 +5,7 @@ import * as React from "react"
 import { ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated"
 
-import { useLocalStorageState } from "@/components/guest/guest-storage"
-import { BottlesTab } from "@/components/tabs"
+import { BottlesTab } from "@/components/tabs/bottles-tab"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -15,71 +14,10 @@ import { Input } from "@/components/ui/input"
 import { ModalCard, ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { canManageVibeEvents } from "@/constants/role-permissions"
+import { useVibe, type VibeEvent, type VibeState } from "@/contexts/vibe-context"
 import { useToast } from "@/hooks/use-toast"
 import { images } from "@/lib/assets"
 import { useTheme } from "@/theme/theme-provider"
-
-const vibeStorageKey = "vipsync_staff_vibe_v1"
-const vibeEventsStorageKey = "vipsync_staff_vibe_events_v1"
-
-interface VibeState {
-  djName: string
-  djStatus: "ON DECKS" | "OFF DECKS" | "SCHEDULED" | "BREAK"
-  genres: string
-  djInitials: string
-  scheduledTime?: string
-}
-
-interface VibeEvent {
-  id: string
-  djName: string
-  date: string
-  time: string
-  genres: string
-  status: "upcoming" | "live"
-}
-
-const defaultVibe: VibeState = {
-  djName: "DJ KHALED",
-  djStatus: "ON DECKS",
-  genres: "Deep House • Techno",
-  djInitials: "DK",
-}
-
-const defaultVibeEvents: VibeEvent[] = [
-  {
-    id: "1",
-    djName: "DJ KHALED",
-    date: "Today",
-    time: "10:00 PM",
-    genres: "Deep House • Techno",
-    status: "live",
-  },
-  {
-    id: "2",
-    djName: "TEAM ALPHA",
-    date: "Tomorrow",
-    time: "11:00 PM",
-    genres: "EDM • Progressive House",
-    status: "upcoming",
-  },
-  {
-    id: "3",
-    djName: "DJ SPARK",
-    date: "Friday",
-    time: "9:00 PM",
-    genres: "Hip Hop • R&B",
-    status: "upcoming",
-  },
-  {
-    id: "4",
-    djName: "NEON NIGHTS",
-    date: "Saturday",
-    time: "10:30 PM",
-    genres: "Techno • Trance",
-    status: "upcoming",
-  },
-]
 
 const TOP_VIBE_EVENTS = 5
 const STATUS_ORDER: Record<VibeEvent["status"], number> = { live: 0, upcoming: 1 }
@@ -105,9 +43,7 @@ function sortVibeEventsByRecent(events: VibeEvent[]): VibeEvent[] {
 export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" | "owner" | "door" } = {}) {
   const { toast } = useToast()
   const { theme } = useTheme()
-
-  const [vibe, setVibe] = useLocalStorageState<VibeState>(vibeStorageKey, defaultVibe)
-  const [vibeEvents, setVibeEvents] = useLocalStorageState<VibeEvent[]>(vibeEventsStorageKey, defaultVibeEvents)
+  const { vibe, setVibe, vibeEvents, addVibeEvent } = useVibe()
   const [showEditVibe, setShowEditVibe] = React.useState(false)
   const [showMenuModal, setShowMenuModal] = React.useState(false)
   const [showAddEventSheet, setShowAddEventSheet] = React.useState(false)
@@ -168,7 +104,7 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
     })
   }
 
-  function handleAddEvent() {
+  async function handleAddEvent() {
     const trimmedDj = addEventForm.djName.trim()
     const trimmedDate = addEventForm.date.trim()
     const trimmedTime = addEventForm.time.trim()
@@ -177,15 +113,13 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
       toast({ title: "Missing fields", description: "DJ Name, Date, and Time are required." })
       return
     }
-    const newEvent: VibeEvent = {
-      id: `event-${Date.now()}`,
+    const newEvent = await addVibeEvent({
       djName: trimmedDj.toUpperCase(),
       date: trimmedDate,
       time: trimmedTime,
       genres: trimmedGenres || "—",
       status: addEventForm.status,
-    }
-    setVibeEvents((prev) => [newEvent, ...prev])
+    })
     setShowAddEventSheet(false)
     setAddEventForm({ djName: "", date: "", time: "", genres: "", status: "upcoming" })
     toast({ title: "Event added", description: `${newEvent.djName} has been added to Vibe Events.` })

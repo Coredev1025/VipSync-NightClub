@@ -1,0 +1,23 @@
+# VIPsync Supabase config
+# Run: supabase link --project-ref <your-project-ref>
+# Then: supabase db push
+# See https://supabase.com/docs/guides/cli
+
+project_id = "vipsync"
+
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+max_rows = 1000
+
+[db]
+port = 54322
+major_version = 15
+
+[db.migrations]
+enabled = true
+
+[auth]
+enabled = true
+site_url = "http://127.0.0.1:8081"

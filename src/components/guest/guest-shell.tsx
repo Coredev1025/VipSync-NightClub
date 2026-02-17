@@ -1,7 +1,7 @@
 import { Bell, CheckCircle, LogOut, Map, MessageSquare, Search, Sparkles, User, X } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
-import { Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native"
+import { Pressable, StyleSheet, Text, View } from "react-native"
 import Animated, {
     FadeIn,
     FadeOut,
@@ -170,20 +170,14 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
   const [showGuestMenu, setShowGuestMenu] = React.useState(false)
   // Notification count for badge dot (e.g. from API); when > 0, pink dot is shown
   const notificationCount = 0
-  const [avatarLayout, setAvatarLayout] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const avatarRef = React.useRef<View>(null)
-  const { width: windowWidth } = useWindowDimensions()
 
   const openGuestMenu = React.useCallback(() => {
-    avatarRef.current?.measureInWindow((x, y, width, height) => {
-      setAvatarLayout({ x, y, width, height })
-      setShowGuestMenu(true)
-    })
+    setShowGuestMenu(true)
   }, [])
 
   const closeGuestMenu = React.useCallback(() => {
     setShowGuestMenu(false)
-    setAvatarLayout(null)
   }, [])
 
   const renderTab = () => {
@@ -280,7 +274,7 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
                 ) : null}
               </HapticPressable>
 
-              <View ref={avatarRef} collapsable={false}>
+              <View ref={avatarRef}>
                 <HapticPressable
                   onPress={openGuestMenu}
                   style={styles.avatarBtn}
@@ -302,6 +296,71 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
           </View>
         </View>
       </Animated.View>
+
+      {/* Guest menu dropdown - fixed just below header to remove gap */}
+      {showGuestMenu && (
+        <>
+          <Pressable
+            style={[StyleSheet.absoluteFill, { zIndex: 200 }]}
+            onPress={closeGuestMenu}
+            accessibilityLabel="Close guest menu"
+            accessibilityRole="button"
+          />
+          <Animated.View
+            entering={FadeIn.duration(150).springify()}
+            exiting={FadeOut.duration(100)}
+            style={[
+              styles.guestMenuDropdown,
+              {
+                position: "absolute",
+                top: Math.max(insets.top, 0) + 56,
+                right: horizontalPadding + 16,
+                backgroundColor: theme.colors.card,
+                borderColor: theme.colors.border,
+                zIndex: 201,
+                paddingTop: 4,
+              },
+            ]}
+            pointerEvents="box-none"
+          >
+            <Text style={[styles.guestMenuTitle, { color: theme.colors.foreground }]}>
+              Guest menu
+            </Text>
+            <View style={styles.guestMenuActions}>
+              <HapticPressable
+                onPress={() => {
+                  closeGuestMenu()
+                  setActiveTab("account")
+                }}
+                neonBorder
+                borderColor={`${theme.colors.neonPink}AA`}
+                style={[styles.menuAction, { backgroundColor: theme.colors.muted }]}
+              >
+                <User size={18} color={theme.colors.mutedForeground} />
+                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold" }}>Account</Text>
+              </HapticPressable>
+              <HapticPressable
+                onPress={() => {
+                  closeGuestMenu()
+                  if (onLogout) {
+                    onLogout()
+                  } else {
+                    setActiveTab("home")
+                  }
+                }}
+                neonBorder
+                borderColor="#ff3b30AA"
+                style={[styles.menuAction, { backgroundColor: "rgba(255,59,48,0.10)" }]}
+              >
+                <LogOut size={18} color="#ff3b30" />
+                <Text style={{ color: "#ff3b30", fontFamily: "Orbitron_900Black" }}>
+                  {onLogout ? "Sign out" : "Clear session"}
+                </Text>
+              </HapticPressable>
+            </View>
+          </Animated.View>
+        </>
+      )}
 
       {/* Main content - reserve space for header + bottom nav + safe area, same animation as pro mode */}
       <View style={{ flex: 1, paddingTop: 56 + Math.max(insets.top, 0), paddingBottom: 70 + Math.max(insets.bottom, 12) }}>
@@ -432,71 +491,6 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
               </View>
             </Card>
           </Animated.View>
-        </>
-      )}
-
-      {/* Guest menu dropdown - positioned below avatar */}
-      {showGuestMenu && (
-        <>
-          <Pressable
-            style={[StyleSheet.absoluteFill, { zIndex: 200 }]}
-            onPress={closeGuestMenu}
-            accessibilityLabel="Close guest menu"
-            accessibilityRole="button"
-          />
-          {avatarLayout && (
-            <Animated.View
-              entering={FadeIn.duration(150).springify()}
-              exiting={FadeOut.duration(100)}
-              style={[
-                styles.guestMenuDropdown,
-                {
-                  top: avatarLayout.y + avatarLayout.height + 8,
-                  right: windowWidth - (avatarLayout.x + avatarLayout.width),
-                  backgroundColor: theme.colors.card,
-                  borderColor: theme.colors.border,
-                  zIndex: 201,
-                },
-              ]}
-              pointerEvents="box-none"
-            >
-              <Text style={[styles.guestMenuTitle, { color: theme.colors.foreground }]}>
-                Guest menu
-              </Text>
-              <View style={styles.guestMenuActions}>
-                <HapticPressable
-                  onPress={() => {
-                    closeGuestMenu()
-                    setActiveTab("account")
-                  }}
-                  neonBorder
-                  borderColor={`${theme.colors.neonPink}AA`}
-                  style={[styles.menuAction, { backgroundColor: theme.colors.muted }]}
-                >
-                  <User size={18} color={theme.colors.mutedForeground} />
-                  <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold" }}>Account</Text>
-                </HapticPressable>
-                <HapticPressable
-                  onPress={() => {
-                    closeGuestMenu()
-                    if (onLogout) {
-                      onLogout()
-                    } else {
-                      setActiveTab("home")
-                    }
-                  }}
-                  neonBorder
-                  borderColor="#ff3b30AA"
-                  style={[styles.menuAction, { backgroundColor: "rgba(255,59,48,0.10)" }]}
-                >
-                  <LogOut size={18} color="#ff3b30" />
-                  <Text style={{ color: "#ff3b30", fontFamily: "Orbitron_900Black" }}>
-                    {onLogout ? "Sign out" : "Clear session"}
-                  </Text>
-                </HapticPressable>
-              </View>
-            </Animated.View>
-          )}
         </>
       )}
     </View>
@@ -688,7 +682,8 @@ const styles = StyleSheet.create({
   guestMenuDropdown: {
     position: "absolute",
     minWidth: 220,
-    padding: 12,
+    paddingHorizontal: 12,
+    paddingBottom: 12,
     borderRadius: 16,
     borderWidth: 1,
   },

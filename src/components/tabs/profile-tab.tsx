@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as Clipboard from "expo-clipboard"
 import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
@@ -43,12 +42,8 @@ import { ModalCard, ModalSheet } from "@/components/ui/modal"
 import { ProfileAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
 import { images, resolveAvatar } from "@/lib/assets"
+import { getProfile, patchProfile } from "@/lib/profile-sync"
 import { useTheme } from "@/theme/theme-provider"
-
-const SETTINGS_ACCOUNT_KEY = "vipsync_settings_account_v1"
-const SETTINGS_NOTIFICATIONS_KEY = "vipsync_settings_notifications_v1"
-const SETTINGS_PRIVACY_KEY = "vipsync_settings_privacy_v1"
-const SETTINGS_CLUB_KEY = "vipsync_settings_club_v1"
 
 interface Achievement {
   id: string
@@ -454,18 +449,16 @@ interface AccountData {
 const DEFAULT_ACCOUNT: AccountData = { displayName: "John Doe", email: "john@example.com", phone: "", avatarUri: "" }
 
 async function loadAccountSettings(): Promise<AccountData> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_ACCOUNT_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as AccountData
-      return {
-        displayName: parsed.displayName ?? "John Doe",
-        email: parsed.email ?? "",
-        phone: parsed.phone ?? "",
-        avatarUri: parsed.avatarUri ?? "",
-      }
+  const profile = await getProfile()
+  const fromApi = profile?.settings_account as Partial<AccountData> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return {
+      displayName: (fromApi.displayName as string) ?? DEFAULT_ACCOUNT.displayName,
+      email: (fromApi.email as string) ?? DEFAULT_ACCOUNT.email,
+      phone: (fromApi.phone as string) ?? DEFAULT_ACCOUNT.phone,
+      avatarUri: (fromApi.avatarUri as string) ?? DEFAULT_ACCOUNT.avatarUri ?? "",
     }
-  } catch (_) {}
+  }
   return { ...DEFAULT_ACCOUNT }
 }
 
@@ -536,15 +529,13 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
 
   const handleSave = React.useCallback(async () => {
     setSaving(true)
+    const payload = {
+      displayName: displayName.trim() || "John Doe",
+      phone: phone.trim(),
+      avatarUri: avatarUri.trim(),
+    }
     try {
-      await AsyncStorage.setItem(
-        SETTINGS_ACCOUNT_KEY,
-        JSON.stringify({
-          displayName: displayName.trim() || "John Doe",
-          phone: phone.trim(),
-          avatarUri: avatarUri.trim(),
-        })
-      )
+      await patchProfile({ settings_account: payload })
       toast({ title: "Saved", description: "Account settings updated." })
     } catch (_) {
       toast({ title: "Error", description: "Could not save settings." })
@@ -626,14 +617,12 @@ interface NotificationPrefs {
 const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = { push: true, sms: false, sound: true }
 
 async function loadNotificationPrefs(): Promise<NotificationPrefs> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_NOTIFICATIONS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<NotificationPrefs>
-      return { ...DEFAULT_NOTIFICATION_PREFS, ...parsed }
-    }
-  } catch (_) {}
-  return DEFAULT_NOTIFICATION_PREFS
+  const profile = await getProfile()
+  const fromApi = profile?.settings_notifications as Partial<NotificationPrefs> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return { ...DEFAULT_NOTIFICATION_PREFS, ...fromApi }
+  }
+  return { ...DEFAULT_NOTIFICATION_PREFS }
 }
 
 function NotificationsSettingsContent() {
@@ -653,7 +642,7 @@ function NotificationsSettingsContent() {
     const next = { ...prefs, [key]: value }
     setPrefs(next)
     try {
-      await AsyncStorage.setItem(SETTINGS_NOTIFICATIONS_KEY, JSON.stringify(next))
+      await patchProfile({ settings_notifications: next })
     } catch (_) {}
   }, [prefs])
 
@@ -691,14 +680,12 @@ interface PrivacyPrefs {
 const DEFAULT_PRIVACY_PREFS: PrivacyPrefs = { profileVisible: true }
 
 async function loadPrivacyPrefs(): Promise<PrivacyPrefs> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_PRIVACY_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<PrivacyPrefs>
-      return { ...DEFAULT_PRIVACY_PREFS, ...parsed }
-    }
-  } catch (_) {}
-  return DEFAULT_PRIVACY_PREFS
+  const profile = await getProfile()
+  const fromApi = profile?.settings_privacy as Partial<PrivacyPrefs> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return { ...DEFAULT_PRIVACY_PREFS, ...fromApi }
+  }
+  return { ...DEFAULT_PRIVACY_PREFS }
 }
 
 function PrivacySettingsContent({ toast }: { toast: (opts: { title: string }) => void }) {
@@ -718,7 +705,7 @@ function PrivacySettingsContent({ toast }: { toast: (opts: { title: string }) =>
     const next = { ...prefs, [key]: value }
     setPrefs(next)
     try {
-      await AsyncStorage.setItem(SETTINGS_PRIVACY_KEY, JSON.stringify(next))
+      await patchProfile({ settings_privacy: next })
       toast({ title: "Updated" })
     } catch (_) {
       toast({ title: "Could not save" })
@@ -756,13 +743,11 @@ interface ClubSettingsData {
 const DEFAULT_CLUB_SETTINGS: ClubSettingsData = { menuUrl: "https://tokyopearl.com/menu.pdf", floorPlanUri: "" }
 
 async function loadClubSettings(): Promise<ClubSettingsData> {
-  try {
-    const raw = await AsyncStorage.getItem(SETTINGS_CLUB_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<ClubSettingsData>
-      return { ...DEFAULT_CLUB_SETTINGS, ...parsed }
-    }
-  } catch (_) {}
+  const profile = await getProfile()
+  const fromApi = profile?.settings_club as Partial<ClubSettingsData> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return { ...DEFAULT_CLUB_SETTINGS, ...fromApi }
+  }
   return { ...DEFAULT_CLUB_SETTINGS }
 }
 
@@ -806,11 +791,9 @@ function ClubSettingsContent({ toast }: { toast: (opts: { title: string; descrip
 
   const handleSave = React.useCallback(async () => {
     setSaving(true)
+    const payload = { menuUrl: menuUrl.trim() || DEFAULT_CLUB_SETTINGS.menuUrl, floorPlanUri: floorPlanUri.trim() || undefined }
     try {
-      await AsyncStorage.setItem(
-        SETTINGS_CLUB_KEY,
-        JSON.stringify({ menuUrl: menuUrl.trim() || DEFAULT_CLUB_SETTINGS.menuUrl, floorPlanUri: floorPlanUri.trim() || undefined })
-      )
+      await patchProfile({ settings_club: payload })
       toast({ title: "Saved", description: "Club settings updated." })
     } catch (_) {
       toast({ title: "Error", description: "Could not save club settings." })

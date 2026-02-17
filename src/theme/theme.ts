@@ -37,7 +37,7 @@ const dark: Theme = {
     card: "#101015",
     cardForeground: "#f4f0ff",
     muted: "#101015",
-    mutedForeground: "#888899",
+    mutedForeground: "#d4d4e4",
     border: "#202030",
     input: "#101015",
 

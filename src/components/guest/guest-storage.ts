@@ -1,50 +1,20 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as React from "react"
 
-export async function readJsonFromStorage<T>(key: string): Promise<T | null> {
-  const raw = await AsyncStorage.getItem(key)
-  if (!raw) return null
-  try {
-    return JSON.parse(raw) as T
-  } catch {
-    return null
-  }
+/** No-op: no localStorage. Returns null (in-memory only). */
+export async function readJsonFromStorage<T>(_key: string): Promise<T | null> {
+  return null
 }
 
-export async function writeJsonToStorage<T>(key: string, value: T): Promise<void> {
-  await AsyncStorage.setItem(key, JSON.stringify(value))
-}
+/** No-op: no localStorage. */
+export async function writeJsonToStorage<T>(_key: string, _value: T): Promise<void> {}
 
-export async function removeFromStorage(key: string): Promise<void> {
-  await AsyncStorage.removeItem(key)
-}
+/** No-op: no localStorage. */
+export async function removeFromStorage(_key: string): Promise<void> {}
 
-export function useStorageState<T>(key: string, initialValue: T) {
-  const [value, setValue] = React.useState<T>(initialValue)
-  const [hasLoaded, setHasLoaded] = React.useState(false)
-
-  React.useEffect(() => {
-    let isMounted = true
-    readJsonFromStorage<T>(key)
-      .then((stored) => {
-        if (!isMounted) return
-        if (stored !== null) setValue(stored)
-        setHasLoaded(true)
-      })
-      .catch(() => setHasLoaded(true))
-    return () => {
-      isMounted = false
-    }
-  }, [key])
-
-  React.useEffect(() => {
-    if (!hasLoaded) return
-    writeJsonToStorage(key, value).catch(() => {})
-  }, [hasLoaded, key, value])
-
-  return [value, setValue] as const
+/** In-memory state only (no persistence). Same API as before for compatibility. */
+export function useStorageState<T>(_key: string, initialValue: T) {
+  return React.useState<T>(initialValue) as [T, React.Dispatch<React.SetStateAction<T>>]
 }
 
 // Backward-compatible naming from the Next.js prototype.
 export const useLocalStorageState = useStorageState
-

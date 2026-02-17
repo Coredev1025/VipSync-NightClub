@@ -44,7 +44,8 @@ export default function RootLayout() {
         }}
       >
         <Stack.Screen name="index" />
-        <Stack.Screen name="guest" />
+        <Stack.Screen name="auth/callback" options={{ animation: "none" }} />
+        <Stack.Screen name="guest/index" />
       </Stack>
     </AppProviders>
   )

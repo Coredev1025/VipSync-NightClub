@@ -4,41 +4,11 @@ import { GSAddChat } from "@/components/chat/gs-add-chat"
 import { GSCalling } from "@/components/chat/gs-calling"
 import { GSCamera } from "@/components/chat/gs-camera"
 import { GSChatDetails, type ChatMessage } from "@/components/chat/gs-chat-details"
-import { GSChatHome } from "@/components/chat/gs-chat-home"
+import { GSChatHome, type ChatItem } from "@/components/chat/gs-chat-home"
 import { GSEmojiPicker } from "@/components/chat/gs-emoji-picker"
 import { GSNewContact } from "@/components/chat/gs-new-contact"
 import { GSNewGroup } from "@/components/chat/gs-new-group"
-
-const mainOpsInitialMessages: ChatMessage[] = [
-  {
-    id: "sarah-1",
-    msg: "Copy. Security, keep front clear. VIPs in 10.",
-    time: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-    me: false,
-    sender: "Sarah",
-    role: "MANAGER",
-  },
-  {
-    id: "dave-1",
-    msg: "Table 2, i got James he wants 2 bottles of Collon.",
-    time: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
-    me: false,
-    sender: "Dave",
-    role: "PROMOTER",
-  },
-]
-
-interface ChatItem {
-  id: number | string
-  img: string
-  name: string
-  phone?: string
-  lastMsg: string
-  time: string
-  seen: boolean
-  unread: number
-  group: boolean
-}
+import { useChats } from "@/contexts/chats-context"
 
 interface Contact {
   id: number | string
@@ -57,75 +27,112 @@ export interface ChatsTabProps {
 }
 
 export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}) {
+  const { chats, getMessages, fetchMessages, sendMessage, createChat } = useChats()
   const [viewState, setViewState] = React.useState<ViewState>("list")
   const [selectedChat, setSelectedChat] = React.useState<ChatItem | null>(null)
   const [selectedContact, setSelectedContact] = React.useState<Contact | null>(null)
+  const [messagesLoaded, setMessagesLoaded] = React.useState(false)
   const [showCamera, setShowCamera] = React.useState(false)
   const [showEmojiPicker, setShowEmojiPicker] = React.useState(false)
   const [emojiToInsert, setEmojiToInsert] = React.useState<string>("")
 
-  const handleChatPress = (chat: ChatItem) => {
+  const handleChatPress = React.useCallback((chat: ChatItem) => {
     setSelectedChat(chat)
+    setMessagesLoaded(false)
     setViewState("chat")
-  }
+  }, [])
+
+  React.useEffect(() => {
+    if (viewState === "chat" && selectedChat && !messagesLoaded) {
+      fetchMessages(String(selectedChat.id)).then(() => setMessagesLoaded(true))
+    }
+  }, [viewState, selectedChat, messagesLoaded, fetchMessages])
 
   const handleAddChatPress = () => {
     setViewState("addChat")
   }
 
-  const handleContactPress = (contact: Contact) => {
-    setSelectedContact(contact)
-    const newChat: ChatItem = {
-      id: `chat_${contact.id}_${Date.now()}`,
-      img: contact.avatar || "https://i.pravatar.cc/320?u=default",
-      name: contact.name,
-      phone: contact.phone,
-      lastMsg: "",
-      time: new Date().toISOString(),
-      seen: true,
-      unread: 0,
-      group: false,
-    }
-    setSelectedChat(newChat)
-    setViewState("chat")
-  }
+  const handleContactPress = React.useCallback(
+    async (contact: Contact) => {
+      setSelectedContact(contact)
+      const created = await createChat({
+        name: contact.name,
+        avatar: contact.avatar,
+        phone: contact.phone,
+        isGroup: false,
+      })
+      const chat: ChatItem = created ?? {
+        id: `chat_${contact.id}_${Date.now()}`,
+        img: contact.avatar || "https://i.pravatar.cc/320?u=default",
+        name: contact.name,
+        phone: contact.phone,
+        lastMsg: "",
+        time: new Date().toISOString(),
+        seen: true,
+        unread: 0,
+        group: false,
+      }
+      setSelectedChat(chat)
+      setMessagesLoaded(false)
+      setViewState("chat")
+    },
+    [createChat]
+  )
 
-  const handleNewGroupContinue = (selectedContacts: Contact[]) => {
-    // Create a group chat from selected contacts
-    const groupName = selectedContacts.map((c) => c.name).join(", ")
-    const newGroupChat: ChatItem = {
-      id: `group_${Date.now()}`,
-      img: selectedContacts[0]?.avatar || "https://i.pravatar.cc/320?u=group",
-      name: groupName.length > 30 ? `${groupName.substring(0, 30)}...` : groupName,
-      lastMsg: "",
-      time: new Date().toISOString(),
-      seen: true,
-      unread: 0,
-      group: true,
-    }
-    setSelectedChat(newGroupChat)
-    setViewState("chat")
-  }
+  const handleNewGroupContinue = React.useCallback(
+    async (selectedContacts: Contact[]) => {
+      const groupName = selectedContacts.map((c) => c.name).join(", ")
+      const created = await createChat({
+        name: groupName.length > 30 ? `${groupName.substring(0, 30)}...` : groupName,
+        avatar: selectedContacts[0]?.avatar,
+        isGroup: true,
+      })
+      const chat: ChatItem = created ?? {
+        id: `group_${Date.now()}`,
+        img: selectedContacts[0]?.avatar || "https://i.pravatar.cc/320?u=group",
+        name: groupName.length > 30 ? `${groupName.substring(0, 30)}...` : groupName,
+        lastMsg: "",
+        time: new Date().toISOString(),
+        seen: true,
+        unread: 0,
+        group: true,
+      }
+      setSelectedChat(chat)
+      setMessagesLoaded(false)
+      setViewState("chat")
+    },
+    [createChat]
+  )
 
-  const handleNewContactSave = (contactData: Omit<Contact, "id">) => {
-    const newContact: Contact = {
-      id: `contact_${Date.now()}`,
-      ...contactData,
-    }
-    const newChat: ChatItem = {
-      id: `chat_${newContact.id}_${Date.now()}`,
-      img: newContact.avatar || "https://i.pravatar.cc/320?u=default",
-      name: newContact.name,
-      phone: newContact.phone,
-      lastMsg: "",
-      time: new Date().toISOString(),
-      seen: true,
-      unread: 0,
-      group: false,
-    }
-    setSelectedChat(newChat)
-    setViewState("chat")
-  }
+  const handleNewContactSave = React.useCallback(
+    async (contactData: Omit<Contact, "id">) => {
+      const newContact: Contact = {
+        id: `contact_${Date.now()}`,
+        ...contactData,
+      }
+      const created = await createChat({
+        name: contactData.name,
+        avatar: contactData.avatar,
+        phone: contactData.phone,
+        isGroup: false,
+      })
+      const chat: ChatItem = created ?? {
+        id: `chat_${newContact.id}_${Date.now()}`,
+        img: newContact.avatar || "https://i.pravatar.cc/320?u=default",
+        name: newContact.name,
+        phone: newContact.phone,
+        lastMsg: "",
+        time: new Date().toISOString(),
+        seen: true,
+        unread: 0,
+        group: false,
+      }
+      setSelectedChat(chat)
+      setMessagesLoaded(false)
+      setViewState("chat")
+    },
+    [createChat]
+  )
 
   if (viewState === "newGroup") {
     return (
@@ -185,6 +192,7 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
   }
 
   if (viewState === "chat" && selectedChat) {
+    const chatMessages = getMessages(String(selectedChat.id))
     return (
       <>
         <GSChatDetails
@@ -192,7 +200,7 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
           contactPhone={selectedChat.phone}
           contactAvatar={selectedChat.img}
           lastSeen="last seen today at 4:10 pm"
-          initialMessages={selectedChat.name === "Main Ops" ? mainOpsInitialMessages : undefined}
+          messages={chatMessages}
           onOrderSynced={onOrderSynced}
           onBack={() => {
             setSelectedChat(null)
@@ -216,9 +224,8 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
           onCameraPress={() => {
             setShowCamera(true)
           }}
-          onSendMessage={(message) => {
-            // TODO: Send message to backend
-            console.log("Message sent:", message)
+          onSendMessage={(text) => {
+            sendMessage(String(selectedChat.id), text)
           }}
           emojiToInsert={emojiToInsert}
         />
@@ -247,6 +254,7 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
 
   return (
     <GSChatHome
+      chats={chats}
       hideMainOps={userMode}
       onChatPress={handleChatPress}
       onAddChatPress={handleAddChatPress}

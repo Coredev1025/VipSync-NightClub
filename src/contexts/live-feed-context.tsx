@@ -1,6 +1,6 @@
 import * as React from "react"
-
-import { useLocalStorageState } from "@/components/guest/guest-storage"
+import { useApiAuth } from "@/contexts/api-auth-context"
+import { api, getAccessToken, isApiConnected } from "@/lib/api"
 
 export interface LiveFeedItem {
   id: string
@@ -10,51 +10,122 @@ export interface LiveFeedItem {
   time: string
   table?: number
   avatar?: string
-  /** Unix ms; used for sorting newest first. Set automatically for new items. */
   createdAt?: number
 }
 
 export type LiveFeedItemInput = Omit<LiveFeedItem, "id">
-
 export const LIVE_FEED_STORAGE_KEY = "vipsync_ops_live_feed_v1"
 
-const now = Date.now()
-const defaultFeed: LiveFeedItem[] = [
-  { id: "1", type: "order", title: "New Order", description: "2x Ace of Spades - Table 1", time: "Just now", table: 1, createdAt: now },
-  { id: "2", type: "arrival", title: "VIP Arrived", description: "Marcus Chen checked in at entrance", time: "2 min ago", avatar: "/images/avatars/man2.png", createdAt: now - 2 * 60 * 1000 },
-  { id: "3", type: "geo", title: "Geo-fence Alert", description: "Williams Party within 500m", time: "5 min ago", createdAt: now - 5 * 60 * 1000 },
-  { id: "4", type: "order", title: "Order Completed", description: "3x Dom Perignon delivered - Table 6", time: "8 min ago", table: 6, createdAt: now - 8 * 60 * 1000 },
-  { id: "5", type: "alert", title: "Capacity Warning", description: "Table 2 is over capacity", time: "10 min ago", table: 2, createdAt: now - 10 * 60 * 1000 },
-  { id: "6", type: "arrival", title: "Guest Expected", description: "Johnson Party - ETA 15 minutes", time: "12 min ago", createdAt: now - 12 * 60 * 1000 },
-]
+export type LiveFeedItemUpdate = Partial<LiveFeedItemInput>
 
 interface LiveFeedContextValue {
   feedItems: LiveFeedItem[]
   setFeedItems: React.Dispatch<React.SetStateAction<LiveFeedItem[]>>
   addFeedItem: (item: LiveFeedItemInput) => void
+  updateFeedItem: (id: string, patch: LiveFeedItemUpdate) => Promise<void>
+  removeFeedItem: (id: string) => Promise<void>
+  clearFeed: () => Promise<void>
+  refetch: () => Promise<void>
+  isApiConnected: boolean
 }
 
 const LiveFeedContext = React.createContext<LiveFeedContextValue | null>(null)
 
+function normalizeFeedItem(r: Record<string, unknown>): LiveFeedItem {
+  return {
+    id: String(r.id),
+    type: r.type as LiveFeedItem["type"],
+    title: String(r.title),
+    description: String(r.description),
+    time: String(r.time),
+    table: r.table as number | undefined,
+    avatar: r.avatar as string | undefined,
+    createdAt: typeof r.createdAt === "number" ? r.createdAt : undefined,
+  }
+}
+
 export function LiveFeedProvider({ children }: { children: React.ReactNode }) {
-  const [feedItems, setFeedItems] = useLocalStorageState<LiveFeedItem[]>(LIVE_FEED_STORAGE_KEY, defaultFeed)
+  const [feedItems, setFeedItems] = React.useState<LiveFeedItem[]>([])
+  const connected = isApiConnected()
+  const { hasBackendToken } = useApiAuth()
+
+  const refetch = React.useCallback(async () => {
+    if (!connected) return
+    if (!getAccessToken()) return
+    try {
+      const res = await api.get<{ feedItems: Array<Record<string, unknown>> }>("/api/live-feed")
+      setFeedItems((res?.feedItems ?? []).map(normalizeFeedItem))
+    } catch {
+      // keep local state on error
+    }
+  }, [connected, setFeedItems])
+
+  React.useEffect(() => {
+    if (connected && hasBackendToken) refetch()
+  }, [connected, hasBackendToken, refetch])
 
   const addFeedItem = React.useCallback(
-    (item: LiveFeedItemInput) => {
-      const createdAt = Date.now()
-      const newItem: LiveFeedItem = {
-        ...item,
-        id: `feed-${createdAt}`,
-        createdAt,
+    async (item: LiveFeedItemInput) => {
+      if (!connected) return
+      if (!getAccessToken()) {
+        if (__DEV__) console.warn("[LiveFeed] addFeedItem skipped: no auth token. Sign in first.")
+        return
       }
-      setFeedItems((prev) => [newItem, ...prev])
+      const createdAt = Date.now()
+      try {
+        const created = await api.post<LiveFeedItem>("/api/live-feed", item)
+        const newItem = normalizeFeedItem({ ...created, createdAt: created.createdAt ?? createdAt })
+        setFeedItems((prev) => [newItem, ...prev])
+      } catch (e) {
+        const msg = e instanceof Error ? e.message : String(e)
+        if (__DEV__) console.warn("[LiveFeed] addFeedItem failed:", msg)
+        // keep state on error
+      }
     },
-    [setFeedItems]
+    [connected, setFeedItems]
   )
 
+  const updateFeedItem = React.useCallback(
+    async (id: string, patch: LiveFeedItemUpdate) => {
+      if (!connected) return
+      setFeedItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+      try {
+        const updated = await api.patch<LiveFeedItem>(`/api/live-feed/${id}`, patch)
+        setFeedItems((prev) => prev.map((item) => (item.id === id ? normalizeFeedItem({ ...updated, createdAt: item.createdAt }) : item)))
+      } catch {
+        setFeedItems((prev) => prev.map((item) => (item.id === id ? { ...item, ...patch } : item)))
+      }
+    },
+    [connected, setFeedItems]
+  )
+
+  const removeFeedItem = React.useCallback(
+    async (id: string) => {
+      if (!connected) return
+      setFeedItems((prev) => prev.filter((item) => item.id !== id))
+      try {
+        await api.delete(`/api/live-feed/${id}`)
+      } catch {
+        refetch()
+      }
+    },
+    [connected, setFeedItems, refetch]
+  )
+
+  const clearFeed = React.useCallback(async () => {
+    if (connected) {
+      try {
+        await api.delete("/api/live-feed/clear")
+      } catch {
+        // still clear locally
+      }
+    }
+    setFeedItems([])
+  }, [connected])
+
   const value = React.useMemo<LiveFeedContextValue>(
-    () => ({ feedItems, setFeedItems, addFeedItem }),
-    [feedItems, setFeedItems, addFeedItem]
+    () => ({ feedItems, setFeedItems, addFeedItem, updateFeedItem, removeFeedItem, clearFeed, refetch, isApiConnected: connected }),
+    [feedItems, setFeedItems, addFeedItem, updateFeedItem, removeFeedItem, clearFeed, refetch, connected]
   )
 
   return <LiveFeedContext.Provider value={value}>{children}</LiveFeedContext.Provider>
@@ -62,9 +133,7 @@ export function LiveFeedProvider({ children }: { children: React.ReactNode }) {
 
 export function useLiveFeed(): LiveFeedContextValue {
   const ctx = React.useContext(LiveFeedContext)
-  if (!ctx) {
-    throw new Error("useLiveFeed must be used within LiveFeedProvider")
-  }
+  if (!ctx) throw new Error("useLiveFeed must be used within LiveFeedProvider")
   return ctx
 }
 

@@ -1,4 +1,3 @@
-import AsyncStorage from "@react-native-async-storage/async-storage"
 import * as Clipboard from "expo-clipboard"
 import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
@@ -33,11 +32,8 @@ import { ModalCard, ModalSheet } from "@/components/ui/modal"
 import { ProfileAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
 import { images, resolveAvatar } from "@/lib/assets"
+import { getProfile, patchProfile } from "@/lib/profile-sync"
 import { useTheme } from "@/theme/theme-provider"
-
-const GUEST_SETTINGS_ACCOUNT_KEY = "vipsync_guest_settings_account_v1"
-const GUEST_SETTINGS_NOTIFICATIONS_KEY = "vipsync_guest_settings_notifications_v1"
-const GUEST_SETTINGS_PRIVACY_KEY = "vipsync_guest_settings_privacy_v1"
 
 type GuestSettingsSection = "account" | "notifications" | "privacy" | "help"
 
@@ -476,18 +472,16 @@ function GuestSettingsSheetContent({
 }
 
 async function loadGuestAccount(): Promise<GuestAccountData> {
-  try {
-    const raw = await AsyncStorage.getItem(GUEST_SETTINGS_ACCOUNT_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<GuestAccountData>
-      return {
-        displayName: parsed.displayName ?? DEFAULT_GUEST_ACCOUNT.displayName,
-        email: parsed.email ?? "",
-        phone: parsed.phone ?? "",
-        avatarUri: parsed.avatarUri ?? "",
-      }
+  const profile = await getProfile()
+  const fromApi = profile?.settings_account as Partial<GuestAccountData> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return {
+      displayName: (fromApi.displayName as string) ?? DEFAULT_GUEST_ACCOUNT.displayName,
+      email: (fromApi.email as string) ?? "",
+      phone: (fromApi.phone as string) ?? "",
+      avatarUri: (fromApi.avatarUri as string) ?? "",
     }
-  } catch (_) {}
+  }
   return { ...DEFAULT_GUEST_ACCOUNT }
 }
 
@@ -536,15 +530,13 @@ function GuestAccountSettingsContent({
 
   const handleSave = React.useCallback(async () => {
     setSaving(true)
+    const payload = {
+      displayName: displayName.trim() || "Guest User",
+      phone: phone.trim(),
+      avatarUri: avatarUri.trim(),
+    }
     try {
-      await AsyncStorage.setItem(
-        GUEST_SETTINGS_ACCOUNT_KEY,
-        JSON.stringify({
-          displayName: displayName.trim() || "Guest User",
-          phone: phone.trim(),
-          avatarUri: avatarUri.trim(),
-        })
-      )
+      await patchProfile({ settings_account: payload })
       toast({ title: "Saved", description: "Account settings updated." })
     } catch (_) {
       toast({ title: "Error", description: "Could not save settings." })
@@ -623,14 +615,12 @@ function GuestAccountSettingsContent({
 }
 
 async function loadGuestNotificationPrefs(): Promise<GuestNotificationPrefs> {
-  try {
-    const raw = await AsyncStorage.getItem(GUEST_SETTINGS_NOTIFICATIONS_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<GuestNotificationPrefs>
-      return { ...DEFAULT_GUEST_NOTIFICATIONS, ...parsed }
-    }
-  } catch (_) {}
-  return DEFAULT_GUEST_NOTIFICATIONS
+  const profile = await getProfile()
+  const fromApi = profile?.settings_notifications as Partial<GuestNotificationPrefs> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return { ...DEFAULT_GUEST_NOTIFICATIONS, ...fromApi }
+  }
+  return { ...DEFAULT_GUEST_NOTIFICATIONS }
 }
 
 function GuestNotificationsContent() {
@@ -652,7 +642,7 @@ function GuestNotificationsContent() {
     const next = { ...prefs, [key]: value }
     setPrefs(next)
     try {
-      await AsyncStorage.setItem(GUEST_SETTINGS_NOTIFICATIONS_KEY, JSON.stringify(next))
+      await patchProfile({ settings_notifications: next })
     } catch (_) {}
   }, [prefs])
 
@@ -689,14 +679,12 @@ function GuestNotificationsContent() {
 }
 
 async function loadGuestPrivacyPrefs(): Promise<GuestPrivacyPrefs> {
-  try {
-    const raw = await AsyncStorage.getItem(GUEST_SETTINGS_PRIVACY_KEY)
-    if (raw) {
-      const parsed = JSON.parse(raw) as Partial<GuestPrivacyPrefs>
-      return { ...DEFAULT_GUEST_PRIVACY, ...parsed }
-    }
-  } catch (_) {}
-  return DEFAULT_GUEST_PRIVACY
+  const profile = await getProfile()
+  const fromApi = profile?.settings_privacy as Partial<GuestPrivacyPrefs> | undefined
+  if (fromApi && typeof fromApi === "object") {
+    return { ...DEFAULT_GUEST_PRIVACY, ...fromApi }
+  }
+  return { ...DEFAULT_GUEST_PRIVACY }
 }
 
 function GuestPrivacyContent({
@@ -722,7 +710,7 @@ function GuestPrivacyContent({
     const next = { ...prefs, [key]: value }
     setPrefs(next)
     try {
-      await AsyncStorage.setItem(GUEST_SETTINGS_PRIVACY_KEY, JSON.stringify(next))
+      await patchProfile({ settings_privacy: next })
       toast({ title: "Updated" })
     } catch (_) {
       toast({ title: "Could not save" })

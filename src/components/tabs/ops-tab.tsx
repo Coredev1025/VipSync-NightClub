@@ -38,6 +38,7 @@ import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { SlowFlowText } from "@/components/ui/slow-flow-text"
 import { canManageLiveFeed, canViewLiveFeed } from "@/constants/role-permissions"
 import { useToast } from "@/hooks/use-toast"
+import { api, isApiConnected } from "@/lib/api"
 import { resolveAvatar } from "@/lib/assets"
 import { formatNumber, getInitials } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
@@ -427,11 +428,39 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
   /** Manager & owner can add feed items. */
   const canManageFeed = canManageLiveFeed(userRole)
 
-  const revenueGoal = 25000
-  const currentRevenue = 10600
+  const [revenueData, setRevenueData] = React.useState<{
+    goalAmount: number
+    currentAmount: number
+    changeRate: number
+    comparisonLabel: string
+  } | null>(null)
+  const connected = isApiConnected()
+  React.useEffect(() => {
+    if (!connected || !canViewFeed) return
+    api
+      .get<{
+        goalAmount: number
+        currentAmount: number
+        changeRate: number
+        comparisonLabel: string
+      }>("/api/ops/revenue")
+      .then((data) => {
+        if (data)
+          setRevenueData({
+            goalAmount: data.goalAmount,
+            currentAmount: data.currentAmount,
+            changeRate: data.changeRate,
+            comparisonLabel: data.comparisonLabel ?? "vs last Saturday",
+          })
+      })
+      .catch(() => {})
+  }, [connected, canViewFeed])
+
+  const revenueGoal = revenueData?.goalAmount ?? 25000
+  const currentRevenue = revenueData?.currentAmount ?? 10600
   const revenueProgress = (currentRevenue / revenueGoal) * 100
-  const changeRate = 18
-  const comparisonPeriod = "vs last Saturday"
+  const changeRate = revenueData?.changeRate ?? 18
+  const comparisonPeriod = revenueData?.comparisonLabel ?? "vs last Saturday"
 
   const filteredFeed = React.useMemo(() => {
     const list = activeFilter === "all" ? feedItems : feedItems.filter((item) => item.type === activeFilter)

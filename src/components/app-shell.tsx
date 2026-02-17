@@ -482,6 +482,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
           setAvatarLayout(null)
         }}
         avatarLayout={avatarLayout}
+        headerBottomY={Math.max(insets.top, 0) + 56}
         onNavigateToProfile={() => {
           setShowUserMenu(false)
           setActiveTab("profile")
@@ -583,12 +584,14 @@ function AccountModal({
   open,
   onClose,
   avatarLayout,
+  headerBottomY,
   onNavigateToProfile,
   onLogout,
 }: {
   open: boolean
   onClose: () => void
   avatarLayout: { x: number; y: number; width: number; height: number } | null
+  headerBottomY: number
   onNavigateToProfile: () => void
   onLogout: () => void
 }) {
@@ -597,8 +600,8 @@ function AccountModal({
 
   if (!avatarLayout) return null
 
-  // Position flush to the bottom of the avatar
-  const modalTop = avatarLayout.y + avatarLayout.height + 4
+  // Position flush under header with slight overlap to remove any visible gap
+  const modalTop = headerBottomY - 4
   const modalRight = screenWidth - avatarLayout.x - avatarLayout.width
 
   return (

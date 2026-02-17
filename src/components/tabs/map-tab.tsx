@@ -51,7 +51,9 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
+import { useBottles } from "@/contexts/bottles-context"
 import { useLiveFeed, type LiveFeedItemInput } from "@/contexts/live-feed-context"
+import { useTables, type Table as TableType, type TableStatus as TableStatusType } from "@/contexts/tables-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
@@ -60,44 +62,22 @@ import { Input } from "@/components/ui/input"
 import { AlertDialog, ModalCard, ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
+import { api, isApiConnected } from "@/lib/api"
 import { avatars, bottleImages, resolveAvatar, tableImages, type BottleImageKey, type TableImageKey } from "@/lib/assets"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
 
 type ViewMode = "map" | "list"
-type TableStatus = "open" | "occupied" | "booked" | "pending"
+type TableStatus = TableStatusType
 type TopSegment = "map" | "list"
 type TableFilter = "all" | TableStatus
 
 type AvatarKey = keyof typeof avatars
-
-interface Table {
-  id: string
-  number: number
-  x: number
-  y: number
-  status: TableStatus
-  capacity: number
-  currentGuests: number
-  guestName?: string
-  spend?: number
-  pendingSpend?: number
-  itemsSummary?: string
-  primaryStaff?: string
-  backupStaff?: string
-  assignedTo?: string
-  promoter?: string
-  server?: string
-  eta?: string
-  /** Avatar keys from @/lib/assets for card display */
+/** Table with asset avatar keys for display; API uses string. */
+type Table = TableType & {
   guestAvatarKey?: AvatarKey
   promoterAvatarKey?: AvatarKey
   bottleGirlAvatarKey?: AvatarKey
-  isVip?: boolean
-  /** When true, display as "DJ" instead of number (DJ booth) */
-  isDjBooth?: boolean
-  /** DJ set time / slot (e.g. "10pm–2am") – only for DJ booth */
-  djSetTime?: string
 }
 
 interface StaffMember {
@@ -167,52 +147,6 @@ const availableBottleGirls: StaffMember[] = [
   { id: "bg4", name: "Emma T.", role: "Bottle girl", avatar: "/images/avatars/woman1.png", isOnline: true, tablesAssigned: 1 },
 ]
 
-// Table positions: 1 & 2 up, 3 & 4 down — dance floor (50,50) fully visible
-const initialTables: Table[] = [
-  {
-    id: "1",
-    number: 5,
-    x: 8,
-    y: 5,
-    status: "occupied",
-    capacity: 12,
-    currentGuests: 10,
-    guestName: "Marcus Thompson",
-    spend: 1200,
-    pendingSpend: 600,
-    itemsSummary: "1x Ace, 2x Goose",
-    primaryStaff: "Mike Tyson",
-    backupStaff: "Jessica Stone",
-    assignedTo: "Sarah M.",
-    promoter: "",
-    server: "",
-    guestAvatarKey: "man3",
-    promoterAvatarKey: "man2",
-    bottleGirlAvatarKey: "woman1",
-    isVip: true,
-  },
-  {
-    id: "2",
-    number: 2,
-    x: 55,
-    y: 5,
-    status: "occupied",
-    capacity: 10,
-    currentGuests: 8,
-    guestName: "Elite Group",
-    spend: 4200,
-    pendingSpend: 400,
-    primaryStaff: "Mike J.",
-    backupStaff: "Lisa Wang",
-    assignedTo: "Mike J.",
-    promoter: "",
-    server: "",
-  },
-  { id: "3", number: 3, x: 8, y: 63, status: "pending", capacity: 6, currentGuests: 0, guestName: "Reservation", eta: "15m" },
-  { id: "4", number: 4, x: 75, y: 63, status: "open", capacity: 8, currentGuests: 0 },
-  { id: "dj", number: 0, x: 85, y: 50, status: "occupied", capacity: 1, currentGuests: 1, guestName: "DJ Booth", isDjBooth: true, djSetTime: "10pm–2am" },
-]
-
 const entrancePos = { x: 50, y: 95 }
 
 // Main Bar & Specials – Table & Bar Menu sample data
@@ -251,31 +185,8 @@ interface BarDrinkItem {
   discountTimeLimit?: string
 }
 
-const tableServiceItems: TableServiceItem[] = [
-  {
-    id: "1",
-    title: "Ace of Spades Gold",
-    price: "$600 Table Minimum",
-    capacity: "✓ COVERS 6 GUESTS",
-    desc: "($100 per person coverage)",
-    iconKey: "ace",
-  },
-  {
-    id: "2",
-    title: "Don Julio 1942",
-    price: "$550 (Was $700)",
-    limitedOffer: true,
-    limitedDate: "2025-12-31",
-    iconKey: "champagne",
-  },
-]
 const TABLE_IMAGE_KEYS: TableImageKey[] = ["table1", "table2", "table3", "table4", "table5", "table6", "table7"]
 const BAR_ITEM_COLORS = ["#E8A838", "#00F0FF", "#00D26A"] as const // amber, cyan, green per item
-const barDrinkItems: BarDrinkItem[] = [
-  { id: "1", title: "Espresso Martini", desc: "Premium Vodka, Cold Brew", price: "$18", iconKey: "coffee", iconColor: BAR_ITEM_COLORS[0], limitedOffer: true, limitedDate: "2025-12-31" },
-  { id: "2", title: "Old Fashioned", desc: "Bourbon, Bitters, Orange", price: "$16", iconKey: "cocktail", iconColor: BAR_ITEM_COLORS[1] },
-  { id: "3", title: "Asahi Draft", desc: "Japanese Lager", price: "$9", iconKey: "beer", iconColor: BAR_ITEM_COLORS[2] },
-]
 
 /** Guest list (date-specific); one-time guests are tied to a list. */
 interface GuestList {
@@ -307,22 +218,6 @@ function formatGuestDateDisplay(dateStr: string): string {
 function todayGuestListId(): string {
   return new Date().toISOString().slice(0, 10)
 }
-
-const initialGuestLists: GuestList[] = [{ id: todayGuestListId(), date: todayGuestListId() }]
-const initialRecurringGuests: ExpectingGuest[] = [
-  { id: "r1", initials: "JW", name: "John Wick", table: 5, extraGuests: 2, avatarKey: "man1", tier: "recurring", dateAdded: todayGuestListId() },
-  { id: "r2", initials: "SC", name: "Sarah Connor", table: 3, extraGuests: 1, avatarKey: "woman1", tier: "recurring", dateAdded: todayGuestListId() },
-  { id: "r3", initials: "DK", name: "Diana King", table: 1, extraGuests: 0, avatarKey: "woman1", tier: "recurring", dateAdded: todayGuestListId() },
-  { id: "r4", initials: "TB", name: "Tom Bradley", table: 4, extraGuests: 3, avatarKey: "man1", tier: "recurring", dateAdded: todayGuestListId() },
-  { id: "r5", initials: "LR", name: "Lisa Rivera", table: 6, extraGuests: 1, avatarKey: "woman1", tier: "recurring", dateAdded: todayGuestListId() },
-]
-const initialOneTimeGuests: ExpectingGuest[] = [
-  { id: "o1", initials: "MJ", name: "Marcus Johnson", table: 7, extraGuests: 4, avatarKey: "man3", tier: "one-time", listId: todayGuestListId(), dateAdded: todayGuestListId() },
-  { id: "o2", initials: "EL", name: "Emma Lee", table: 2, extraGuests: 0, avatarKey: "woman1", tier: "one-time", listId: todayGuestListId(), dateAdded: todayGuestListId() },
-  { id: "o3", initials: "JP", name: "James Park", table: 8, extraGuests: 2, avatarKey: "man1", tier: "one-time", listId: todayGuestListId(), dateAdded: todayGuestListId() },
-  { id: "o4", initials: "NC", name: "Nina Chen", table: 9, extraGuests: 0, avatarKey: "woman1", tier: "one-time", listId: todayGuestListId(), dateAdded: todayGuestListId() },
-  { id: "o5", initials: "RW", name: "Ryan Wright", table: 10, extraGuests: 1, avatarKey: "man3", tier: "one-time", listId: todayGuestListId(), dateAdded: todayGuestListId() },
-]
 
 export interface PendingChatOrder {
   tableNumber: number
@@ -356,8 +251,8 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
   const { addFeedItem } = useLiveFeed()
   const { theme } = useTheme()
 
+  const { tables, setTables, updateTable } = useTables()
   const [viewMode, setViewMode] = React.useState<ViewMode>("map")
-  const [tables, setTables] = React.useState<Table[]>(initialTables)
   const [highlightTableFromChat, setHighlightTableFromChat] = React.useState<number | null>(null)
 
   React.useEffect(() => {
@@ -407,7 +302,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
   }, [highlightTableFromChat, tables])
   const [isVoiceActive, setIsVoiceActive] = React.useState(false)
   const [showPath, setShowPath] = React.useState(false)
-  const [pathTarget, setPathTarget] = React.useState<Table | null>(initialTables[1])
+  const [pathTarget, setPathTarget] = React.useState<Table | null>(tables[1] ?? null)
   const [tableFilter, setTableFilter] = React.useState<TableFilter>("all")
 
   const [showAssignStaffDialog, setShowAssignStaffDialog] = React.useState(false)
@@ -422,10 +317,10 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
   const [guestListSearch, setGuestListSearch] = React.useState("")
   const [guestListPage, setGuestListPage] = React.useState(0)
   const GUEST_LIST_PAGE_SIZE = 10
-  const [guestLists, setGuestLists] = React.useState<GuestList[]>(() => [...initialGuestLists])
+  const [guestLists, setGuestLists] = React.useState<GuestList[]>(() => [{ id: todayGuestListId(), date: todayGuestListId() }])
   const [selectedGuestListId, setSelectedGuestListId] = React.useState<string>(() => todayGuestListId())
-  const [recurringGuests, setRecurringGuests] = React.useState<ExpectingGuest[]>(() => [...initialRecurringGuests])
-  const [oneTimeGuests, setOneTimeGuests] = React.useState<ExpectingGuest[]>(() => [...initialOneTimeGuests])
+  const [recurringGuests, setRecurringGuests] = React.useState<ExpectingGuest[]>(() => [])
+  const [oneTimeGuests, setOneTimeGuests] = React.useState<ExpectingGuest[]>(() => [])
   const [arrivedGuests, setArrivedGuests] = React.useState<ExpectingGuest[]>([])
   const [showAddGuestSheet, setShowAddGuestSheet] = React.useState(false)
   const [newGuestName, setNewGuestName] = React.useState("")
@@ -506,31 +401,24 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
 
   function handleAssignStaff(staffName: string) {
     if (!selectedTable) return
-    setTables((prev) =>
-      prev.map((t) => (t.id === selectedTable.id ? { ...t, assignedTo: staffName } : t))
-    )
+    updateTable(selectedTable.id, { assignedTo: staffName })
     setSelectedTable((prev) => (prev ? { ...prev, assignedTo: staffName } : prev))
     setShowAssignStaffDialog(false)
   }
 
   function handleUnassignStaff() {
     if (!selectedTable) return
-    setTables((prev) =>
-      prev.map((t) => (t.id === selectedTable.id ? { ...t, assignedTo: undefined } : t))
-    )
+    updateTable(selectedTable.id, { assignedTo: undefined })
     setSelectedTable((prev) => (prev ? { ...prev, assignedTo: undefined } : prev))
   }
 
   function handleTableGuestsChange(tableId: string, delta: number) {
-    setTables((prev) =>
-      prev.map((t) =>
-        t.id === tableId ? { ...t, currentGuests: Math.max(0, t.currentGuests + delta) } : t
-      )
-    )
+    const table = tables.find((t) => t.id === tableId)
+    if (!table) return
+    const nextGuests = Math.max(0, table.currentGuests + delta)
+    updateTable(tableId, { currentGuests: nextGuests })
     if (selectedTable?.id === tableId) {
-      setSelectedTable((prev) =>
-        prev ? { ...prev, currentGuests: Math.max(0, prev.currentGuests + delta) } : null
-      )
+      setSelectedTable((prev) => (prev ? { ...prev, currentGuests: nextGuests } : null))
     }
   }
 
@@ -538,7 +426,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
     const synced = { ...updates }
     if (updates.promoter !== undefined) synced.primaryStaff = updates.promoter || undefined
     if (updates.server !== undefined) synced.backupStaff = updates.server || undefined
-    setTables((prev) => prev.map((t) => (t.id === tableId ? { ...t, ...synced } : t)))
+    updateTable(tableId, synced)
     if (selectedTable?.id === tableId) {
       setSelectedTable((prev) => (prev ? { ...prev, ...synced } : null))
     }
@@ -2543,6 +2431,7 @@ function TableDetailSheet({
   canEditPromoter?: boolean
 }) {
   const { theme } = useTheme()
+  const { bottles } = useBottles()
   const statusColor = getStatusColor(theme, table.status)
   const assigned = table.assignedTo
   const staff = assigned ? availableStaff.find((s) => s.name === assigned) : undefined
@@ -2941,48 +2830,40 @@ function TableDetailSheet({
             Select a bottle to add to this table. Pending spend will be updated.
           </Text>
           <Text style={[styles.menuSectionLabel, { color: theme.colors.neonPink }]}>BOTTLES</Text>
-          {tableServiceItems.map((item) => {
-            const priceNum = item.price ? parseInt(item.price.replace(/[^0-9]/g, ""), 10) : undefined
-            const priceMatch = item.price?.match(/\$[\d,]+/)
-            const priceRight = priceMatch ? priceMatch[0] : item.price
+          {bottles.map((b) => {
+            const priceRight = formatNumber(b.price, { prefix: "$" })
             return (
               <HapticPressable
-                key={item.id}
+                key={b.id}
                 onPress={() => {
-                  setPendingBottleAdd({ itemsText: `1x ${item.title}`, pendingAmount: priceNum })
+                  setPendingBottleAdd({ itemsText: `1x ${b.name}`, pendingAmount: b.price })
                 }}
                 style={[
                   styles.menuItemCard,
                   {
-                    borderColor: item.limitedOffer ? `${theme.colors.neonPink}99` : `${theme.colors.neonPink}55`,
+                    borderColor: `${theme.colors.neonPink}55`,
                     backgroundColor: theme.colors.card,
                   },
                 ]}
               >
-                {item.limitedOffer ? (
-                  <View style={[styles.limitedBadge, { backgroundColor: theme.colors.neonPink }]}>
-                    <Text style={styles.limitedBadgeText}>LTO</Text>
-                  </View>
-                ) : null}
                 <View style={[styles.menuItemIcon, { backgroundColor: theme.colors.muted }]}>
-                  {item.iconKey && bottleImages[item.iconKey] ? (
+                  {b.imageKey && bottleImages[b.imageKey as BottleImageKey] ? (
                     <Image
-                      source={bottleImages[item.iconKey]}
+                      source={bottleImages[b.imageKey as BottleImageKey]}
                       style={styles.menuItemIconImage}
                       resizeMode="contain"
                     />
+                  ) : b.imageUri ? (
+                    <Image source={{ uri: b.imageUri }} style={styles.menuItemIconImage} resizeMode="contain" />
                   ) : (
                     <Wine size={20} color={theme.colors.neonPink} />
                   )}
                 </View>
                 <View style={{ flex: 1, marginLeft: 12 }}>
-                  <Text style={[styles.menuItemTitle, { color: theme.colors.foreground }]}>{item.title}</Text>
+                  <Text style={[styles.menuItemTitle, { color: theme.colors.foreground }]}>{b.name}</Text>
                   <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular", marginTop: 2 }}>
-                    {item.price}
+                    Stock: {b.stock}
                   </Text>
-                  {item.desc ? (
-                    <Text style={[styles.menuItemDesc, { color: theme.colors.mutedForeground, marginTop: 4 }]}>{item.desc}</Text>
-                  ) : null}
                 </View>
                 <Text style={[styles.menuItemTitle, { color: theme.colors.foreground, fontSize: 16 }]}>{priceRight}</Text>
               </HapticPressable>
@@ -3480,8 +3361,8 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
   const [activeTab, setActiveTab] = React.useState<BarSpecialsTab>("table")
   const [menuEditMode, setMenuEditMode] = React.useState(false)
   const [showUpdateDetectedDialog, setShowUpdateDetectedDialog] = React.useState(false)
-  const [tableItems, setTableItems] = React.useState<TableServiceItem[]>(() => [...tableServiceItems])
-  const [barItems, setBarItems] = React.useState<BarDrinkItem[]>(() => [...barDrinkItems])
+  const [tableItems, setTableItems] = React.useState<TableServiceItem[]>(() => [])
+  const [barItems, setBarItems] = React.useState<BarDrinkItem[]>(() => [])
   const [ltoDatePicker, setLtoDatePicker] = React.useState<LtoDatePickerTarget | null>(null)
   const [datePicker, setDatePicker] = React.useState<DatePickerTarget | null>(null)
   const [pickerValue, setPickerValue] = React.useState<Date>(() => new Date())
@@ -4221,7 +4102,21 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
           <HapticPressable
             onPress={() => {
               setShowUpdateDetectedDialog(false)
-              toast({ title: "Notification sent", description: "Active users have been notified." })
+              if (isApiConnected()) {
+                api
+                  .post("/api/push/send-all", {
+                    title: "Menu updated",
+                    body: "We've updated our menu. Check it out!",
+                  })
+                  .then(() => {
+                    toast({ title: "Notification sent", description: "Active users have been notified." })
+                  })
+                  .catch(() => {
+                    toast({ title: "Notification failed", description: "Could not send push. Try again.", variant: "destructive" })
+                  })
+              } else {
+                toast({ title: "Notification sent", description: "Active users have been notified." })
+              }
             }}
             style={{ flex: 1, borderWidth: 2, borderColor: theme.colors.neonCyan, borderRadius: 10, paddingVertical: 12, alignItems: "center", justifyContent: "center" }}
           >
