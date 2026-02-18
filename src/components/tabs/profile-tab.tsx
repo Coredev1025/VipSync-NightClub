@@ -29,7 +29,7 @@ import {
 } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
-import { Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native"
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native"
 import Animated, { useAnimatedStyle, useSharedValue, withRepeat, withTiming } from "react-native-reanimated"
 import { useSafeAreaInsets } from "react-native-safe-area-context"
 
@@ -42,7 +42,10 @@ import { ModalCard, ModalSheet } from "@/components/ui/modal"
 import { ProfileAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
 import { images, resolveAvatar } from "@/lib/assets"
+import { api, isApiConnected } from "@/lib/api"
+import { formatNumber } from "@/lib/utils"
 import { getProfile, patchProfile } from "@/lib/profile-sync"
+import { uploadAvatar } from "@/lib/upload-avatar"
 import { useTheme } from "@/theme/theme-provider"
 
 interface Achievement {
@@ -104,6 +107,12 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
   const { toast } = useToast()
+  const [heroName, setHeroName] = React.useState<string>("")
+  const [stats, setStats] = React.useState<{
+    tablesSold: number
+    revenueAmount: number
+    rating: number
+  } | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection>("account")
@@ -122,6 +131,62 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
   }, [])
 
   const closeSettings = React.useCallback(() => setSettingsOpen(false), [])
+
+  React.useEffect(() => {
+    let isMounted = true
+    getProfile()
+      .then((profile) => {
+        if (!isMounted || !profile) return
+        const settings = profile.settings_account as Partial<AccountData> | undefined
+        const nameFromSettings = (settings?.displayName as string | undefined)?.trim()
+        const nameFromProfile = (profile.name as string | undefined)?.trim()
+        const nextName = nameFromSettings || nameFromProfile || ""
+        setHeroName(nextName)
+      })
+      .catch(() => {
+        if (!isMounted) return
+        setHeroName("")
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  React.useEffect(() => {
+    let isMounted = true
+    if (!isApiConnected()) return
+
+    api
+      .get<{
+        tablesSold: number
+        revenueAmount: number
+        rating: number
+      }>("/api/profile/stats")
+      .then((data) => {
+        if (!isMounted || !data) return
+        setStats({
+          tablesSold: data.tablesSold ?? 0,
+          revenueAmount: data.revenueAmount ?? 0,
+          rating: data.rating ?? 0,
+        })
+      })
+      .catch(() => {})
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
+
+  const statsLoading = isApiConnected() && !stats
+
+  const tablesSoldValue =
+    stats && typeof stats.tablesSold === "number" ? String(stats.tablesSold) : "—"
+  const revenueValue =
+    stats && typeof stats.revenueAmount === "number"
+      ? formatNumber(stats.revenueAmount, { prefix: "$" })
+      : "—"
+  const ratingValue =
+    stats && typeof stats.rating === "number" ? stats.rating.toFixed(1) : "—"
 
   return (
     <View style={{ flex: 1 }}>
@@ -162,7 +227,7 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
                   fontFamily: "Orbitron_900Black",
                 }}
               >
-                John Doe
+                {heroName}
               </Text>
               <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                 <View style={[styles.pill, { backgroundColor: `${theme.colors.neonPink}22`, borderColor: `${theme.colors.neonPink}55` }]}>
@@ -181,10 +246,18 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
 
       <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 140 }} style={{ paddingHorizontal: 16, marginTop: 18 }}>
         <View style={{ flexDirection: "row", gap: 10 }}>
-          <StatCard icon={<Table size={18} color={theme.colors.neonPink} />} label="Tables Sold" value="127" tone="pink" trend="+12" flex={1} />
-          <StatCard icon={<DollarSign size={18} color={theme.colors.neonGreen} />} label="Revenue" value="$48.5K" tone="green" trend="+8%" flex={1.5} />
-          <StatCard icon={<Star size={18} color={theme.colors.neonCyan} />} label="Rating" value="4.9" tone="cyan" flex={1} />
+          <StatCard icon={<Table size={18} color={theme.colors.neonPink} />} label="Tables Sold" value={tablesSoldValue} tone="pink" trend="+12" flex={1} />
+          <StatCard icon={<DollarSign size={18} color={theme.colors.neonGreen} />} label="Revenue" value={revenueValue} tone="green" trend="+8%" flex={1.5} />
+          <StatCard icon={<Star size={18} color={theme.colors.neonCyan} />} label="Rating" value={ratingValue} tone="cyan" flex={1} />
         </View>
+        {statsLoading ? (
+          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
+            <ActivityIndicator size="small" color={theme.colors.neonCyan} />
+            <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular" }}>
+              Loading your performance stats…
+            </Text>
+          </View>
+        ) : null}
       </MotiView>
 
       <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 220 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
@@ -446,20 +519,18 @@ interface AccountData {
   avatarUri?: string
 }
 
-const DEFAULT_ACCOUNT: AccountData = { displayName: "John Doe", email: "john@example.com", phone: "", avatarUri: "" }
-
 async function loadAccountSettings(): Promise<AccountData> {
   const profile = await getProfile()
   const fromApi = profile?.settings_account as Partial<AccountData> | undefined
   if (fromApi && typeof fromApi === "object") {
     return {
-      displayName: (fromApi.displayName as string) ?? DEFAULT_ACCOUNT.displayName,
-      email: (fromApi.email as string) ?? DEFAULT_ACCOUNT.email,
-      phone: (fromApi.phone as string) ?? DEFAULT_ACCOUNT.phone,
-      avatarUri: (fromApi.avatarUri as string) ?? DEFAULT_ACCOUNT.avatarUri ?? "",
+      displayName: (fromApi.displayName as string) ?? "",
+      email: (fromApi.email as string) ?? "",
+      phone: (fromApi.phone as string) ?? "",
+      avatarUri: (fromApi.avatarUri as string) ?? "",
     }
   }
-  return { ...DEFAULT_ACCOUNT }
+  return { displayName: "", email: "", phone: "", avatarUri: "" }
 }
 
 function getInitials(name: string): string {
@@ -492,9 +563,9 @@ function AnimatedLoaderIcon() {
 
 function AccountSettingsContent({ toast }: { toast: (opts: { title: string; description?: string }) => void }) {
   const { theme } = useTheme()
-  const [displayName, setDisplayName] = React.useState(DEFAULT_ACCOUNT.displayName)
-  const [phone, setPhone] = React.useState(DEFAULT_ACCOUNT.phone)
-  const [avatarUri, setAvatarUri] = React.useState<string>(DEFAULT_ACCOUNT.avatarUri ?? "")
+  const [displayName, setDisplayName] = React.useState("")
+  const [phone, setPhone] = React.useState("")
+  const [avatarUri, setAvatarUri] = React.useState<string>("")
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
@@ -529,13 +600,23 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
 
   const handleSave = React.useCallback(async () => {
     setSaving(true)
-    const payload = {
-      displayName: displayName.trim() || "John Doe",
-      phone: phone.trim(),
-      avatarUri: avatarUri.trim(),
-    }
+    let finalAvatarUri = avatarUri.trim()
     try {
-      await patchProfile({ settings_account: payload })
+      const profile = await getProfile()
+      if (profile?.id && finalAvatarUri && (finalAvatarUri.startsWith("file://") || finalAvatarUri.startsWith("content://"))) {
+        const uploadedUrl = await uploadAvatar(profile.id, finalAvatarUri)
+        if (uploadedUrl) finalAvatarUri = uploadedUrl
+      }
+      const payload = {
+        displayName: displayName.trim() || "",
+        phone: phone.trim(),
+        avatarUri: finalAvatarUri,
+      }
+      await patchProfile({
+        ...(finalAvatarUri ? { picture: finalAvatarUri } : {}),
+        settings_account: payload,
+      })
+      if (finalAvatarUri !== avatarUri) setAvatarUri(finalAvatarUri)
       toast({ title: "Saved", description: "Account settings updated." })
     } catch (_) {
       toast({ title: "Error", description: "Could not save settings." })
@@ -576,7 +657,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
         <Input
           value={displayName}
           onChangeText={setDisplayName}
-          placeholder="Your name"
           autoCapitalize="words"
           containerStyle={{ borderColor: theme.colors.border }}
         />
@@ -586,7 +666,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
         <Input
           value={phone}
           onChangeText={setPhone}
-          placeholder="+1 (555) 000-0000"
           keyboardType="phone-pad"
           containerStyle={{ borderColor: theme.colors.border }}
         />

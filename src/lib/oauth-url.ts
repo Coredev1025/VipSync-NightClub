@@ -22,11 +22,35 @@ export function getOAuthTokensFromUrl(url: string): {
 }
 
 /**
- * Get the PKCE auth code from the redirect URL (query string).
- * Used when Supabase is configured with flowType: "pkce"; Android preserves query params in deep links.
+ * Get the authorization code from the redirect URL (query string).
+ * Supabase redirects with ?code=... when using the default auth flow.
  */
 export function getAuthCodeFromUrl(url: string): string | null {
-  const queryRaw = url.includes("?") ? url.slice(url.indexOf("?") + 1) : ""
-  const query = queryRaw.includes("#") ? queryRaw.slice(0, queryRaw.indexOf("#")) : queryRaw
-  return new URLSearchParams(query).get("code")
+  try {
+    const hashStart = url.indexOf("#")
+    const queryStart = url.indexOf("?")
+    const queryEnd = hashStart >= 0 ? hashStart : url.length
+    const queryRaw = queryStart >= 0 ? url.slice(queryStart + 1, queryEnd) : ""
+    return new URLSearchParams(queryRaw).get("code")
+  } catch {
+    return null
+  }
+}
+
+/**
+ * Get error params from OAuth redirect URL (Supabase redirects with error in fragment or query).
+ */
+export function getAuthErrorFromUrl(url: string): { error?: string; description?: string } | null {
+  try {
+    const hash = url.includes("#") ? url.slice(url.indexOf("#") + 1) : ""
+    const queryRaw = url.includes("?") ? url.slice(url.indexOf("?") + 1) : ""
+    const query = queryRaw.includes("#") ? queryRaw.slice(0, queryRaw.indexOf("#")) : queryRaw
+    const params = new URLSearchParams(hash || query)
+    const error = params.get("error") || params.get("error_code")
+    const description = params.get("error_description")
+    if (error) return { error, description: description ?? undefined }
+    return null
+  } catch {
+    return null
+  }
 }

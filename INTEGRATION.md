@@ -5,7 +5,7 @@ This document describes how the React Native app, Node API, and Supabase databas
 ## Overview
 
 - **Frontend**: Expo/React Native app in this repo (`app/`, `src/`). When `EXPO_PUBLIC_API_URL` is set to a non-localhost URL, the app uses the backend for data; otherwise it runs with local/AsyncStorage data only.
-- **Backend**: Node.js API in `backend/`. It uses Supabase as the database and issues JWTs after Google sign-in.
+- **Backend**: Node.js API in `backend/`. It uses Supabase as the database and issues JWTs after sign-in (Supabase auth).
 - **Database**: Supabase. Schema is in `supabase/migrations/20250210000000_initial.sql`.
 
 ## Quick start
@@ -23,7 +23,7 @@ This document describes how the React Native app, Node API, and Supabase databas
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, JWT_SECRET, GOOGLE_CLIENT_ID
+# Edit .env: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET (or JWT_SECRET)
 npm install
 npm run dev
 ```
@@ -60,7 +60,7 @@ All routes except `/api/auth/supabase` and `/health` require `Authorization: Bea
 # From repo root
 cp .env.example .env
 # Set EXPO_PUBLIC_API_URL to your backend URL (e.g. ngrok URL for device testing)
-# Set Google OAuth client IDs (see GOOGLE_OAUTH_SETUP.md)
+# Set EXPO_PUBLIC_API_URL to your backend URL
 npm install
 npx expo start
 ```
@@ -78,7 +78,7 @@ npx expo start
 
 | Entity | Create | Read | Update | Delete | Frontend |
 |--------|--------|------|--------|--------|----------|
-| **Auth/Profile** | On Google sign-in | GET /api/profile | PATCH /api/profile | — | profile-sync, auth-screen, index |
+| **Auth/Profile** | On sign-in | GET /api/profile | PATCH /api/profile | — | profile-sync, auth-screen, index |
 | **Bottles** | POST /api/bottles | GET /api/bottles | PATCH /api/bottles/:id | DELETE /api/bottles/:id | BottlesContext |
 | **Live feed** | POST /api/live-feed | GET /api/live-feed | PATCH /api/live-feed/:id | DELETE /api/live-feed/:id, DELETE /clear | LiveFeedContext (addFeedItem, updateFeedItem, removeFeedItem, clearFeed) |
 | **Vibe** | — | GET /api/vibe | PATCH /api/vibe | — | VibeContext |
@@ -90,7 +90,7 @@ npx expo start
 
 ## Data flow
 
-1. **Auth**: User signs in with Google via Supabase OAuth. The app exchanges the Supabase session for a JWT via `POST /api/auth/supabase`. The backend verifies the Supabase token and returns a JWT. The app stores the JWT and uses it for all subsequent API requests.
+1. **Auth**: User signs in via Supabase (e.g. magic link or other provider). The app exchanges the Supabase session for a JWT via `POST /api/auth/supabase`. The backend verifies the Supabase token and returns a JWT. The app stores the JWT and uses it for all subsequent API requests.
 2. **Profile**: After onboarding, the app sends `PATCH /api/profile` with `mode` and `pro_role` so the backend profile stays in sync.
 3. **Bottles / Live feed / Vibe / Tables**: Each context fetches from the API when connected and persists changes via the API; when not connected, it uses local state or AsyncStorage.
 
@@ -101,9 +101,6 @@ npx expo start
 | Variable | Purpose |
 |----------|---------|
 | EXPO_PUBLIC_API_URL | Backend base URL; when set (and not localhost), app uses API for data |
-| EXPO_PUBLIC_GOOGLE_CLIENT_ID | Google OAuth Web client ID |
-| EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID | Google OAuth Android client ID |
-
 ### Backend (`backend/.env`)
 
 | Variable | Purpose |
@@ -112,7 +109,6 @@ npx expo start
 | JWT_SECRET | Secret for signing JWTs |
 | SUPABASE_URL | Supabase project URL |
 | SUPABASE_SERVICE_ROLE_KEY | Supabase service role key |
-| GOOGLE_CLIENT_ID | Google OAuth client ID (for verifying id_token) |
 | FIREBASE_SERVICE_ACCOUNT_JSON | JSON string of Firebase service account key for FCM (optional) |
 | GOOGLE_APPLICATION_CREDENTIALS | Path to Firebase service account JSON file (optional, alternative to above) |
 

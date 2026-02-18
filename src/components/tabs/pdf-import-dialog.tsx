@@ -81,14 +81,11 @@ export function PdfImportDialog({ open, onClose, onImportComplete }: PdfImportDi
     setErrorMessage(null)
     try {
       await new Promise((resolve) => setTimeout(resolve, 2000))
-      const mockTables: ImportedTable[] = [
-        { id: "import-1", number: 1, x: 12, y: 18, capacity: 8 },
-        { id: "import-2", number: 2, x: 35, y: 18, capacity: 10 },
-        { id: "import-3", number: 3, x: 58, y: 18, capacity: 6 },
-        { id: "import-4", number: 4, x: 82, y: 18, capacity: 8 },
-      ]
-      setExtractedTables(mockTables)
-      setImportStatus("success")
+      // Real PDF parsing and table extraction should be implemented here.
+      // For now, we avoid injecting mock tables that don't exist in the database.
+      setExtractedTables([])
+      setImportStatus("error")
+      setErrorMessage("PDF processing is not available yet. Please contact your admin to import the table map.")
     } catch (error) {
       setImportStatus("error")
       setErrorMessage("Failed to process PDF. Please ensure the file contains valid table map data.")

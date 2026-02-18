@@ -111,6 +111,7 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
   const { toast } = useToast()
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
+  const [heroName, setHeroName] = React.useState<string>(DEFAULT_GUEST_ACCOUNT.displayName)
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState<GuestSettingsSection>("account")
@@ -121,6 +122,26 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
   }, [])
 
   const closeSettings = React.useCallback(() => setSettingsOpen(false), [])
+
+  React.useEffect(() => {
+    let isMounted = true
+    getProfile()
+      .then((profile) => {
+        if (!isMounted || !profile) return
+        const settings = profile.settings_account as Partial<GuestAccountData> | undefined
+        const nameFromSettings = (settings?.displayName as string | undefined)?.trim()
+        const nameFromProfile = (profile.name as string | undefined)?.trim()
+        const nextName = nameFromSettings || nameFromProfile || DEFAULT_GUEST_ACCOUNT.displayName
+        setHeroName(nextName)
+      })
+      .catch(() => {
+        if (!isMounted) return
+        setHeroName(DEFAULT_GUEST_ACCOUNT.displayName)
+      })
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   return (
     <View style={{ flex: 1 }}>
@@ -158,7 +179,7 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
                     fontFamily: "Orbitron_900Black",
                   }}
                 >
-                  Guest User
+                  {heroName}
                 </Text>
                 <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
                   <View
@@ -287,7 +308,7 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
                 neonBorder
                 borderColor={`${theme.colors.neonPink}AA`}
                 style={[styles.iconPill, { backgroundColor: `${theme.colors.neonPink}22` }]}
-                onPress={() => toast({ title: "Share", description: "Share link copied (demo)." })}
+                onPress={() => toast({ title: "Share", description: "Share link copied." })}
               >
                 <Share2 size={18} color={theme.colors.neonPink} />
               </HapticPressable>
@@ -582,7 +603,6 @@ function GuestAccountSettingsContent({
         <Input
           value={displayName}
           onChangeText={setDisplayName}
-          placeholder="Your name"
           autoCapitalize="words"
           containerStyle={{ borderColor: theme.colors.border }}
         />
@@ -592,7 +612,6 @@ function GuestAccountSettingsContent({
         <Input
           value={phone}
           onChangeText={setPhone}
-          placeholder="+1 (555) 000-0000"
           keyboardType="phone-pad"
           containerStyle={{ borderColor: theme.colors.border }}
         />

@@ -38,9 +38,12 @@ import Animated, {
 
 import { Button } from "@/components/ui/button"
 import { VIPsyncLogo } from "@/components/ui/vipsync-logo"
-import { useGoogleAuth } from "@/hooks/use-google-auth"
+import { useSupabaseAuth } from "@/hooks/use-supabase-auth"
+import { useToast } from "@/hooks/use-toast"
 import { images } from "@/lib/assets"
+import { signInWithGoogle } from "@/lib/google-oauth"
 import { getProfile } from "@/lib/profile-sync"
+import { uploadAvatar } from "@/lib/upload-avatar"
 import { useTheme } from "@/theme/theme-provider"
 
 type AuthStep = "welcome" | "mode" | "role" | "profile"
@@ -86,8 +89,16 @@ const roles: RoleOption[] = [
   },
 ]
 
+export interface AuthCompleteData {
+  name: string
+  picture?: string | null
+  referralCode?: string
+}
+
 export interface AuthScreenProps {
-  onComplete: (mode: SignupMode, proRole?: UserRole) => void
+  onComplete: (mode: SignupMode, proRole?: UserRole, profileData?: AuthCompleteData) => void
+  /** When set (e.g. after Google OAuth), start at this step instead of welcome. */
+  initialStep?: AuthStep
 }
 
 type GlowTone = "pink" | "cyan" | "green" | "orange" | "purple"
@@ -310,38 +321,63 @@ function NeonField({
   )
 }
 
-export function AuthScreen({ onComplete }: AuthScreenProps) {
+export function AuthScreen({ onComplete, initialStep }: AuthScreenProps) {
   const { theme } = useTheme()
-  const [step, setStep] = React.useState<AuthStep>("welcome")
+  const [step, setStep] = React.useState<AuthStep>(initialStep ?? "welcome")
   const [signupMode, setSignupMode] = React.useState<SignupMode | null>(null)
   const [name, setName] = React.useState("")
   const [selectedRole, setSelectedRole] = React.useState<UserRole | null>(null)
   const [referralCode, setReferralCode] = React.useState("")
   const [avatarUri, setAvatarUri] = React.useState<string | null>(null)
+  const [isSubmitting, setIsSubmitting] = React.useState(false)
+  const [googleError, setGoogleError] = React.useState<string | null>(null)
+  const [isGoogleLoading, setIsGoogleLoading] = React.useState(false)
 
-  // Supabase OAuth flow (Google via Supabase) — useEffect in hook handles getProfile when user is set
-  const { signInWithGoogle, isLoading: isGoogleLoading, error: googleError, user } = useGoogleAuth(
-    () => setStep("mode")
-  )
+  const { user } = useSupabaseAuth()
+  const { toast } = useToast()
+  const stepRef = React.useRef(step)
+  stepRef.current = step
 
-  // If user already has a session (e.g. returning user), restore stored mode/role and go to app, or show mode page
+  // Pre-fill name from session user when on profile step
+  const u = user as { user_metadata?: { full_name?: string; name?: string }; name?: string } | null
+  const userName = u?.user_metadata?.full_name ?? u?.user_metadata?.name ?? u?.name
+  React.useEffect(() => {
+    if (userName && step === "profile" && !name) {
+      setName(userName)
+    }
+  }, [userName, step, name])
+
+  // If user already has a session (e.g. returning user), restore stored mode/role and go to app, or show mode page.
+  // When initialStep is "mode" (e.g. after Google OAuth), show mode step so user can choose. Do not overwrite step
+  // if the user has already navigated to "role" or "profile" (getProfile can resolve late and would reset step).
   React.useEffect(() => {
     if (!user) return
     let cancelled = false
     getProfile()
       .then((profile) => {
         if (cancelled) return
+        const currentStep = stepRef.current
+        if (initialStep === "mode") {
+          if (currentStep !== "role" && currentStep !== "profile") {
+            setStep("mode")
+          }
+          return
+        }
         if (profile?.mode === "pro" || profile?.mode === "user") {
           onComplete(profile.mode as SignupMode, profile.pro_role as UserRole | undefined)
-        } else {
+        } else if (currentStep !== "role" && currentStep !== "profile") {
           setStep("mode")
         }
       })
-      .catch(() => setStep("mode"))
+      .catch(() => {
+        if (!cancelled && stepRef.current !== "role" && stepRef.current !== "profile") {
+          setStep("mode")
+        }
+      })
     return () => {
       cancelled = true
     }
-  }, [user, onComplete])
+  }, [user, onComplete, initialStep])
 
   React.useEffect(() => {
     async function requestPermissions() {
@@ -371,6 +407,29 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
       }
     } catch (error) {
       Alert.alert("Error", "Failed to pick image. Please try again.")
+    }
+  }
+
+  async function handleGetStarted() {
+    const mode = signupMode ?? "pro"
+    const role = mode === "pro" ? selectedRole ?? undefined : undefined
+    if (!name.trim() || (mode === "pro" && !role)) return
+
+    setIsSubmitting(true)
+    try {
+      let pictureUrl: string | null = null
+      if (avatarUri && user?.id) {
+        pictureUrl = await uploadAvatar(user.id, avatarUri)
+      }
+      onComplete(mode, role, {
+        name: name.trim(),
+        picture: pictureUrl,
+        referralCode: referralCode.trim() || undefined,
+      })
+    } catch (e) {
+      Alert.alert("Error", "Failed to save profile. Please try again.")
+    } finally {
+      setIsSubmitting(false)
     }
   }
 
@@ -404,34 +463,39 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
 
             <View style={styles.block}>
               {googleError ? (
-                <Text style={[styles.p, { color: theme.colors.neonPink, marginBottom: 8 }]}>
+                <Text style={[styles.googleError, { color: "#ef4444" }]}>
                   {googleError}
                 </Text>
               ) : null}
               <Button
-                variant="solid"
-                tone="neutral"
-                size="lg"
-                onPress={signInWithGoogle}
-                disabled={isGoogleLoading}
-                style={[styles.full, { backgroundColor: "#fff", borderColor: "#e0e0e0", marginBottom: 12 }]}
-              >
-                <View style={styles.rowCenter}>
-                  <Text style={[styles.btnText, { color: "#333" }]}>
-                    {isGoogleLoading ? "Signing in…" : "Continue with Google"}
-                  </Text>
-                  {!isGoogleLoading && <ArrowRight size={18} color="#333" />}
-                </View>
-              </Button>
-              <Button
                 variant="gradient"
                 size="lg"
-                onPress={() => setStep("mode")}
-                style={[styles.full, { backgroundColor: "#1877F2", marginBottom: 12 }]}
+                disabled={isGoogleLoading}
+                onPress={async () => {
+                  setGoogleError(null)
+                  setIsGoogleLoading(true)
+                  const result = await signInWithGoogle()
+                  setIsGoogleLoading(false)
+                  if (result.success) {
+                    toast({
+                      title: "Sign-in successful",
+                      description: "Choose your mode to continue.",
+                    })
+                    return
+                  }
+                  setGoogleError(result.error ?? "Google sign-in failed. Try again.")
+                }}
+                style={[styles.full, { backgroundColor: "#4285F4", marginBottom: 12 }]}
               >
                 <View style={styles.rowCenter}>
-                  <Text style={styles.btnTextWhite}>Continue with Facebook</Text>
-                  <ArrowRight size={18} color="#fff" />
+                  {isGoogleLoading ? (
+                    <Text style={styles.btnTextWhite}>Signing in…</Text>
+                  ) : (
+                    <>
+                      <Text style={styles.btnTextWhite}>Continue with Google</Text>
+                      <ArrowRight size={18} color="#fff" />
+                    </>
+                  )}
                 </View>
               </Button>
 
@@ -454,6 +518,18 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
                   </Text>
                 </View>
               </Button>
+
+              {user ? (
+                <Button
+                  variant="ghost"
+                  onPress={() => setStep("mode")}
+                  style={[styles.full, { marginTop: 12 }]}
+                >
+                  <Text style={[styles.btnText, { color: theme.colors.mutedForeground }]}>
+                    Already signed in? Continue
+                  </Text>
+                </Button>
+              ) : null}
             </View>
 
             <Text style={[styles.legal, { color: theme.colors.mutedForeground }]}>
@@ -728,15 +804,15 @@ export function AuthScreen({ onComplete }: AuthScreenProps) {
               <Button
                 variant="gradient"
                 size="lg"
-                onPress={() => onComplete(signupMode ?? "pro", signupMode === "pro" ? selectedRole ?? undefined : undefined)}
-                disabled={!name.trim() || (signupMode === "pro" && !selectedRole)}
+                onPress={handleGetStarted}
+                disabled={!name.trim() || (signupMode === "pro" && !selectedRole) || isSubmitting}
                 style={styles.full}
               >
                 <View style={styles.rowCenter}>
                   <Text style={styles.btnTextWhite}>
-                    {signupMode === "user" ? "Go to guest app" : "Get Started"}
+                    {isSubmitting ? "Saving…" : signupMode === "user" ? "Go to guest app" : "Get Started"}
                   </Text>
-                  <ArrowRight size={18} color="#fff" />
+                  {!isSubmitting && <ArrowRight size={18} color="#fff" />}
                 </View>
               </Button>
             </View>
@@ -856,6 +932,12 @@ const styles = StyleSheet.create({
   center: {
     alignItems: "center",
     justifyContent: "center",
+  },
+  googleError: {
+    fontSize: 13,
+    textAlign: "center",
+    marginBottom: 10,
+    paddingHorizontal: 8,
   },
   block: {
     alignSelf: "center",

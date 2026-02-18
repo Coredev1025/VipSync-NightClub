@@ -7,6 +7,8 @@ import { ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { useToast } from "@/hooks/use-toast"
 import { images } from "@/lib/assets"
+import { useVibeOptional, type VibeEvent } from "@/contexts/vibe-context"
+import { api } from "@/lib/api"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
 import { Image } from "expo-image"
@@ -54,27 +56,7 @@ interface VipBookingTable {
 
 type VipTableItem = { type: "bidding"; data: VipBiddingTable } | { type: "booking"; data: VipBookingTable }
 
-const vipBiddingTables: VipBiddingTable[] = [
-  { id: "table-4", name: "TABLE 4", capacity: 8, currentBid: 1200, leader: "@CryptoKing", nextBidAmount: 1250 },
-  { id: "jade-booth", name: "Jade Booth", capacity: 6, currentBid: 1100, leader: "@VIPGuest", nextBidAmount: 1200 },
-]
-
-const vipBookingTables: VipBookingTable[] = [
-  { id: "table-6", name: "TABLE 6", capacity: 6, description: "Great view of the stage. Standard minimum spend applies.", minSpend: 500 },
-  { id: "pearl-sofa", name: "Pearl Sofa", capacity: 4, description: "Intimate setting. Min spend applies.", minSpend: 800 },
-]
-
-const featuredTables: FeaturedTable[] = [
-  { id: "jade-booth", name: "Jade Booth", seats: "4–6", minSpend: 1200, tag: "HOT" },
-  { id: "pearl-sofa", name: "Pearl Sofa", seats: "2–4", minSpend: 800, tag: "BEST VALUE" },
-  { id: "tokyo-stage", name: "Tokyo Stage", seats: "6–10", minSpend: 2200, tag: "LIMITED" },
-]
-
-/** Combined list for VIP TABLES: bidding items first, then booking (same order as reference UI). */
-const vipTableItems: VipTableItem[] = [
-  ...vipBiddingTables.map((data) => ({ type: "bidding" as const, data })),
-  ...vipBookingTables.map((data) => ({ type: "booking" as const, data })),
-]
+/** Combined list for VIP TABLES: from API (bidding first, then booking). */
 
 interface HomeEvent {
   id: string
@@ -85,30 +67,84 @@ interface HomeEvent {
   tag?: "TONIGHT" | "LIVE" | "UPCOMING"
 }
 
-const homeEvents: HomeEvent[] = [
-  { id: "e1", title: "Neon Nights", dateLabel: "Fri, Jan 31", time: "22:00", venue: "Main Floor", tag: "TONIGHT" },
-  { id: "e2", title: "Deep House Session", dateLabel: "Sat, Feb 1", time: "23:00", venue: "Tokyo Pearl", tag: "UPCOMING" },
-  { id: "e3", title: "VIP Rooftop", dateLabel: "Sat, Feb 1", time: "21:00", venue: "Rooftop", tag: "UPCOMING" },
-]
+/** Fallback when no events from API (empty so vibe/API is source of truth). */
+const homeEventsFallback: HomeEvent[] = []
 
 function getIsOpenNow(date: Date) {
   const hour = date.getHours()
   return hour >= 21 || hour < 3
 }
 
+function formatDateLabel(dateIso: string): string {
+  if (!dateIso) return ""
+  const d = new Date(dateIso + "T12:00:00")
+  if (Number.isNaN(d.getTime())) return dateIso
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  if (d.toDateString() === today.toDateString()) return "Today"
+  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow"
+  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
+}
+
+function mapVibeEventsToHomeEvents(vibeEvents: VibeEvent[]): HomeEvent[] {
+  const today = new Date()
+  return vibeEvents.map((evt) => {
+    const date = evt.date
+    const dateObj = date ? new Date(date + "T12:00:00") : null
+    let tag: HomeEvent["tag"] | undefined
+    if (evt.status === "live") {
+      tag = "LIVE"
+    } else if (dateObj && dateObj.toDateString() === today.toDateString()) {
+      tag = "TONIGHT"
+    } else {
+      tag = "UPCOMING"
+    }
+    return {
+      id: evt.id,
+      title: evt.djName,
+      dateLabel: date ? formatDateLabel(date) : "",
+      time: evt.time,
+      venue: "Tokyo Pearl",
+      tag,
+    }
+  })
+}
+
 export function GuestHomeTab() {
   const { toast } = useToast()
   const { theme } = useTheme()
+  const vibeCtx = useVibeOptional()
 
   const [mode, setMode] = useLocalStorageState<"vibe" | "vip">(homeStorageKeys.mode, "vibe")
   const [follows, setFollows] = useLocalStorageState<HomeFollows>(homeStorageKeys.follows, {
     djKhaled: false,
     teamAlpha: false,
   })
+  const [vipBidding, setVipBidding] = React.useState<VipBiddingTable[]>([])
+  const [vipBooking, setVipBooking] = React.useState<VipBookingTable[]>([])
+  const vipTableItems: VipTableItem[] = React.useMemo(
+    () => [
+      ...vipBidding.map((data) => ({ type: "bidding" as const, data })),
+      ...vipBooking.map((data) => ({ type: "booking" as const, data })),
+    ],
+    [vipBidding, vipBooking]
+  )
+  React.useEffect(() => {
+    api.get<{ bidding: VipBiddingTable[]; booking: VipBookingTable[] }>("/api/guest/vip-tables").then((res) => {
+      if (res?.bidding) setVipBidding(res.bidding)
+      if (res?.booking) setVipBooking(res.booking)
+    }).catch(() => {})
+  }, [])
   const [biddingTable, setBiddingTable] = React.useState<FeaturedTable | null>(null)
   const [bidAmount, setBidAmount] = React.useState("")
   const [tableBids, setTableBids] = React.useState<Record<string, number>>({})
   const isOpenNow = getIsOpenNow(new Date())
+  const eventsFromVibe = React.useMemo(
+    () => (vibeCtx?.vibeEvents && vibeCtx.vibeEvents.length > 0 ? mapVibeEventsToHomeEvents(vibeCtx.vibeEvents) : []),
+    [vibeCtx?.vibeEvents]
+  )
+  const homeEvents: HomeEvent[] = eventsFromVibe.length > 0 ? eventsFromVibe : homeEventsFallback
 
   const openBidSheet = React.useCallback((table: FeaturedTable) => {
     setBiddingTable(table)
@@ -120,7 +156,7 @@ export function GuestHomeTab() {
     setBidAmount("")
   }, [])
 
-  const submitBid = React.useCallback(() => {
+  const submitBid = React.useCallback(async () => {
     if (!biddingTable) return
     const amount = parseInt(bidAmount.replace(/[^0-9]/g, ""), 10)
     if (Number.isNaN(amount) || amount < biddingTable.minSpend) {
@@ -131,12 +167,17 @@ export function GuestHomeTab() {
       })
       return
     }
-    setTableBids((prev) => ({ ...prev, [biddingTable.id]: amount }))
-    toast({
-      title: "Bid placed",
-      description: `${biddingTable.name}: ${formatNumber(amount, { prefix: "$" })}. We'll notify you if your bid is accepted.`,
-    })
-    closeBidSheet()
+    try {
+      await api.post<{ ok: boolean }>(`/api/guest/vip-tables/${biddingTable.id}/bid`, { amount })
+      setTableBids((prev) => ({ ...prev, [biddingTable.id]: amount }))
+      toast({
+        title: "Bid placed",
+        description: `${biddingTable.name}: ${formatNumber(amount, { prefix: "$" })}. We'll notify you if your bid is accepted.`,
+      })
+      closeBidSheet()
+    } catch {
+      toast({ title: "Bid failed", description: "Could not place bid. Try again.", variant: "destructive" })
+    }
   }, [biddingTable, bidAmount, toast, closeBidSheet])
 
   const openBidSheetForVip = React.useCallback((data: VipBiddingTable) => {
@@ -145,11 +186,20 @@ export function GuestHomeTab() {
   }, [])
 
   const handleBookNow = React.useCallback(
-    (data: VipBookingTable) => {
-      toast({
-        title: "Booking requested",
-        description: `${data.name} at ${formatNumber(data.minSpend, { prefix: "$" })} min spend. We'll confirm shortly.`,
-      })
+    async (data: VipBookingTable) => {
+      try {
+        await api.post<{ ok: boolean }>(`/api/guest/vip-tables/${data.id}/book`, {})
+        toast({
+          title: "Table booked",
+          description: `${data.name} is reserved. See you soon!`,
+        })
+      } catch {
+        toast({
+          title: "Booking failed",
+          description: "Could not book this table. Try again or contact the venue.",
+          variant: "destructive",
+        })
+      }
     },
     [toast]
   )
@@ -237,8 +287,8 @@ export function GuestHomeTab() {
                         toast({
                           title: next ? "Following DJ Khaled" : "Unfollowed DJ Khaled",
                           description: next
-                            ? "You’ll see updates on the Home vibe feed (demo)."
-                            : "No more updates (demo).",
+                            ? "You’ll see updates on the Home vibe feed."
+                            : "No more updates from this DJ.",
                         })
                       }}
                     >

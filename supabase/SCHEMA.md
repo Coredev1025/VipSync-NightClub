@@ -30,7 +30,7 @@ User profiles (linked to Supabase Auth via `auth_id`).
 | created_at | TIMESTAMPTZ | NOT NULL |
 | updated_at | TIMESTAMPTZ | NOT NULL |
 
-**Trigger:** `on_auth_user_created` – inserts/updates profile when a new user signs up (e.g. Google OAuth).
+**Trigger:** `on_auth_user_created` – inserts/updates profile when a new user signs up (e.g. OAuth or magic link).
 
 ---
 
@@ -219,7 +219,7 @@ Guest home featured tables (venue_id, name, seats, min_spend, tag).
 
 ### vip_tables
 
-Guest home VIP tables: type = bidding (current_bid, leader, next_bid_amount) or booking (description, min_spend).
+Guest home VIP tables: type = bidding (current_bid, leader, next_bid_amount) or booking (description, min_spend). Now linked to floor plan `map_tables` via `map_table_id` (optional).
 
 ---
 
@@ -232,6 +232,24 @@ Guest follows for DJs/entities (profile_id, entity_type, entity_id). UNIQUE(prof
 ### bar_lto
 
 Bar limited-time offers (venue_id, name, start_date, end_date, menu_items JSONB).
+
+---
+
+### table_service_items
+
+Table service menu items (VIP bottle packages), each optionally linked to a `bottles` inventory record via `bottle_id`.
+
+---
+
+### bar_drink_items
+
+Bar drink menu items (e.g. cocktails), each optionally linked to a `bottles` inventory record via `bottle_id`.
+
+---
+
+### table_service_lto
+
+Table service limited-time offers (venue_id, name, start_date, end_date, menu_items JSONB).
 
 ---
 

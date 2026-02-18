@@ -22,16 +22,106 @@ import {
 import { ApiAuthContext } from "@/contexts/api-auth-context"
 import { BottlesProvider } from "@/contexts/bottles-context"
 import { ChatsProvider } from "@/contexts/chats-context"
-import { LiveFeedProvider } from "@/contexts/live-feed-context"
+import { MenuProvider } from "@/contexts/menu-context"
 import { TablesProvider } from "@/contexts/tables-context"
 import { VibeProvider } from "@/contexts/vibe-context"
 import { checkApiReachable, getApiBaseUrl, isApiConnected, setAccessToken } from "@/lib/api"
+import { syncBackendSession } from "@/lib/google-oauth"
 import { supabase } from "@/lib/supabase"
-import { ToastProvider } from "@/providers/toast-provider"
+import { ToastProvider, useToast } from "@/providers/toast-provider"
 import { ThemeProvider } from "@/theme/theme-provider"
 
 export interface AppProvidersProps {
   children: React.ReactNode
+}
+
+function AuthSyncListener({
+  setHasBackendToken,
+}: {
+  setHasBackendToken: React.Dispatch<React.SetStateAction<boolean>>
+}) {
+  const { toast } = useToast()
+
+  // Listen for auth state changes and sync with backend.
+  React.useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
+      async (event, session) => {
+        if (__DEV__) console.log("[Auth] Auth event:", event)
+
+        if (event === "SIGNED_OUT" || !session) {
+          setAccessToken(null)
+          setHasBackendToken(false)
+          return
+        }
+
+        // SIGNED_IN or TOKEN_REFRESHED: sync with backend when we have a session
+        if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
+          if (!isApiConnected()) {
+            if (__DEV__) console.warn("[Auth] Backend JWT skipped: no API URL. Set EXPO_PUBLIC_API_URL in .env.")
+            setAccessToken(null)
+            setHasBackendToken(false)
+            if (event === "SIGNED_IN") {
+              toast({
+                title: "Backend not connected",
+                description: "Set EXPO_PUBLIC_API_URL and restart the app.",
+                variant: "destructive",
+              })
+            }
+            return
+          }
+
+          const error = await syncBackendSession(session)
+          if (error) {
+            console.error("[Auth] Backend sync failed:", error)
+            setAccessToken(null)
+            setHasBackendToken(false)
+            if (event === "SIGNED_IN") {
+              toast({
+                title: "Sign-in failed",
+                description: error,
+                variant: "destructive",
+              })
+            }
+          } else {
+            setHasBackendToken(true)
+            if (event === "SIGNED_IN") {
+              toast({
+                title: "Signed in",
+                description: "Sign-in successful. Choose your mode to continue.",
+                durationMs: 2600,
+              })
+            }
+          }
+        }
+      }
+    )
+
+    // Initial load: sync if user already has a session (e.g. app reopened).
+    supabase.auth.getSession().then(({ data: { session } }) => {
+      if (session) {
+        if (!isApiConnected()) {
+          setAccessToken(null)
+          setHasBackendToken(false)
+          return
+        }
+        syncBackendSession(session).then((error) => {
+          if (error) {
+            setAccessToken(null)
+            setHasBackendToken(false)
+          } else {
+            setHasBackendToken(true)
+          }
+        })
+      } else {
+        setAccessToken(null)
+        setHasBackendToken(false)
+      }
+    })
+
+    return () => subscription.unsubscribe()
+  }, [setHasBackendToken, toast])
+
+  return null
 }
 
 export function AppProviders({ children }: AppProvidersProps) {
@@ -68,72 +158,6 @@ export function AppProviders({ children }: AppProvidersProps) {
     })
   }, [])
 
-  // Global backend token sync: whenever we have a Supabase session, exchange it for a backend JWT.
-  // Runs on mount and on auth changes so the token is set even if AuthScreen is not mounted.
-  React.useEffect(() => {
-    async function syncToken(session: { access_token: string } | null) {
-      if (!session) {
-        setAccessToken(null)
-        setHasBackendToken(false)
-        return
-      }
-      if (!isApiConnected()) {
-        if (__DEV__) console.warn("[Auth] Backend JWT skipped: no API URL. Set EXPO_PUBLIC_API_URL in .env.")
-        setAccessToken(null)
-        setHasBackendToken(false)
-        return
-      }
-      const base = getApiBaseUrl()
-      try {
-        const { data: { session: fresh } } = await supabase.auth.refreshSession()
-        const token = (fresh?.access_token ?? session.access_token).trim()
-        if (!token) {
-          setAccessToken(null)
-          setHasBackendToken(false)
-          return
-        }
-        if (__DEV__) console.log("[Auth] Exchanging Supabase token for backend JWT at", base, "…")
-        const res = await fetch(`${base}/api/auth/supabase`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ access_token: token }),
-        })
-        let data: { accessToken?: string; error?: string; hint?: string } | null = null
-        try {
-          data = await res.json()
-        } catch {
-          data = null
-        }
-        if (res.ok && data?.accessToken) {
-          setAccessToken(data.accessToken)
-          setHasBackendToken(true)
-          if (__DEV__) console.log("[Auth] Backend JWT received.")
-        } else {
-          setAccessToken(null)
-          setHasBackendToken(false)
-          if (__DEV__) {
-            console.warn(
-              "[Auth] Backend JWT exchange failed:",
-              res.status,
-              data?.error ?? "",
-              data?.hint ?? "Set SUPABASE_JWT_SECRET in backend .env to match Supabase Dashboard → API → JWT Secret."
-            )
-          }
-        }
-      } catch (e) {
-        setAccessToken(null)
-        setHasBackendToken(false)
-        if (__DEV__) {
-          console.warn("[Auth] Backend JWT exchange failed:", e instanceof Error ? e.message : e)
-          console.warn("[Auth] On a physical device set EXPO_PUBLIC_API_URL to your computer's IP, e.g. http://192.168.1.x:3000")
-        }
-      }
-    }
-    supabase.auth.getSession().then(({ data: { session } }) => syncToken(session))
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => syncToken(session ?? null))
-    return () => subscription.unsubscribe()
-  }, [])
-
   if (!fontsLoaded && !fontError) {
     return null
   }
@@ -144,15 +168,18 @@ export function AppProviders({ children }: AppProvidersProps) {
         <SafeAreaProvider>
           <ApiAuthContext.Provider value={{ hasBackendToken }}>
             <BottlesProvider>
-              <LiveFeedProvider>
+              <MenuProvider>
               <TablesProvider>
                 <ChatsProvider>
                   <VibeProvider>
-                    <ToastProvider>{children}</ToastProvider>
+                    <ToastProvider>
+                      <AuthSyncListener setHasBackendToken={setHasBackendToken} />
+                      {children}
+                    </ToastProvider>
                   </VibeProvider>
                 </ChatsProvider>
               </TablesProvider>
-              </LiveFeedProvider>
+              </MenuProvider>
             </BottlesProvider>
           </ApiAuthContext.Provider>
         </SafeAreaProvider>

@@ -120,14 +120,7 @@ export function GSAddChat({
   const mode = useColorScheme()
   const { theme } = useTheme()
 
-  const defaultContacts: Contact[] = [
-    { id: 1, name: "Sarah Miller", phone: "+1 (555) 102-2002", avatar: "https://i.pravatar.cc/320?u=sarah@geekspark.com", status: "VIP Operations Manager" },
-    { id: 2, name: "Mike Johnson", phone: "+1 (555) 103-2003", avatar: "https://i.pravatar.cc/320?u=mike@geekspark.com", status: "Door Manager" },
-    { id: 3, name: "John Doe", phone: "+1 (555) 200-3000", avatar: "https://i.pravatar.cc/320?u=john@geekspark.com", status: "Bar Manager" },
-    { id: 4, name: "Jane Smith", phone: "+1 (555) 201-3001", avatar: "https://i.pravatar.cc/320?u=jane@geekspark.com", status: "Host" },
-  ]
-
-  const contactList = contacts.length > 0 ? contacts : defaultContacts
+  const contactList = contacts
 
   const styles = getAddChatStyles(mode, theme)
 

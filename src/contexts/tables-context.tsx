@@ -33,51 +33,6 @@ export interface Table {
 export type TableUpdate = Partial<Omit<Table, "id">>
 export type TableCreate = Omit<Table, "id">
 
-const defaultTables: Table[] = [
-  {
-    id: "1",
-    number: 5,
-    x: 8,
-    y: 5,
-    status: "occupied",
-    capacity: 12,
-    currentGuests: 10,
-    guestName: "Marcus Thompson",
-    spend: 1200,
-    pendingSpend: 600,
-    itemsSummary: "1x Ace, 2x Goose",
-    primaryStaff: "Mike Tyson",
-    backupStaff: "Jessica Stone",
-    assignedTo: "Sarah M.",
-    promoter: "",
-    server: "",
-    guestAvatarKey: "man3",
-    promoterAvatarKey: "man2",
-    bottleGirlAvatarKey: "woman1",
-    isVip: true,
-  },
-  {
-    id: "2",
-    number: 2,
-    x: 55,
-    y: 5,
-    status: "occupied",
-    capacity: 10,
-    currentGuests: 8,
-    guestName: "Elite Group",
-    spend: 4200,
-    pendingSpend: 400,
-    primaryStaff: "Mike J.",
-    backupStaff: "Lisa Wang",
-    assignedTo: "Mike J.",
-    promoter: "",
-    server: "",
-  },
-  { id: "3", number: 3, x: 8, y: 63, status: "pending", capacity: 6, currentGuests: 0, guestName: "Reservation", eta: "15m" },
-  { id: "4", number: 4, x: 75, y: 63, status: "open", capacity: 8, currentGuests: 0 },
-  { id: "dj", number: 0, x: 85, y: 50, status: "occupied", capacity: 1, currentGuests: 1, guestName: "DJ Booth", isDjBooth: true, djSetTime: "10pm–2am" },
-]
-
 interface TablesContextValue {
   tables: Table[]
   setTables: React.Dispatch<React.SetStateAction<Table[]>>
@@ -94,7 +49,7 @@ const TablesContext = React.createContext<TablesContextValue | null>(null)
 export function TablesProvider({ children }: { children: React.ReactNode }) {
   const connected = isApiConnected()
   const { hasBackendToken } = useApiAuth()
-  const [tables, setTables] = React.useState<Table[]>(() => (connected ? [] : defaultTables))
+  const [tables, setTables] = React.useState<Table[]>(() => [])
   const [isLoading, setIsLoading] = React.useState(connected)
 
   const refetch = React.useCallback(async () => {
@@ -106,7 +61,7 @@ export function TablesProvider({ children }: { children: React.ReactNode }) {
     setIsLoading(true)
     try {
       const res = await api.get<{ tables: Table[] }>("/api/tables")
-      setTables(res?.tables ?? defaultTables)
+      setTables(res?.tables ?? [])
     } catch {
       // keep current on error
     } finally {

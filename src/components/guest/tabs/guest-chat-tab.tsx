@@ -86,113 +86,8 @@ interface GuestChatThread {
   avatars: Array<{ src?: string; fallback: string }>
 }
 
-const demoThreads: GuestChatThread[] = [
-  {
-    id: "vip-ops",
-    title: "VIP Operations",
-    subtitle: "Table 3 confirmed f...",
-    kind: "group",
-    membersCount: 5,
-    avatars: [
-      { src: "/images/avatars/man1.png", fallback: "A" },
-      { src: "/images/avatars/man2.png", fallback: "B" },
-      { src: "/images/avatars/man3.png", fallback: "C" },
-      { src: "/images/avatars/man4.png", fallback: "D" },
-      { src: "/images/avatars/woman1.png", fallback: "E" },
-    ],
-  },
-  {
-    id: "sarah",
-    title: "Sarah Miller",
-    subtitle: "I need 2 more bottles for Ta...",
-    kind: "direct",
-    avatars: [{ src: "/images/avatars/woman1.png", fallback: "SM" }],
-  },
-  {
-    id: "door-team",
-    title: "Door Team",
-    subtitle: "Venue update",
-    kind: "group",
-    membersCount: 4,
-    avatars: [
-      { src: "/images/avatars/man5.png", fallback: "DT" },
-      { src: "/images/avatars/man6.png", fallback: "DT" },
-      { src: "/images/avatars/man7.png", fallback: "DT" },
-      { src: "/images/avatars/man8.png", fallback: "DT" },
-    ],
-  },
-  {
-    id: "mike",
-    title: "Mike Johnson",
-    subtitle: "VIP arriving in 10 mins",
-    kind: "direct",
-    avatars: [{ src: "/images/avatars/man3.png", fallback: "MJ" }],
-  },
-  {
-    id: "bar-staff",
-    title: "Bar Staff",
-    subtitle: "Running low on Grey Goose",
-    kind: "group",
-    membersCount: 7,
-    avatars: [
-      { src: "/images/avatars/man2.png", fallback: "BS" },
-      { src: "/images/avatars/man4.png", fallback: "BS" },
-      { src: "/images/avatars/man7.png", fallback: "BS" },
-      { src: "/images/avatars/woman1.png", fallback: "BS" },
-    ],
-  },
-]
-
 function getDefaultMessages(): GuestChatMessage[] {
-  return [
-    {
-      id: createMessageId(),
-      sender: "venue",
-      threadId: "vip-ops",
-      authorName: "Sarah",
-      authorAvatarSrc: "/images/avatars/woman1.png",
-      authorFallback: "S",
-      text: "Hey team, we have Marcus Chen arriving soon with 6 guests",
-      createdAtISO: isoMinutesAgo(6),
-    },
-    {
-      id: createMessageId(),
-      sender: "guest",
-      threadId: "vip-ops",
-      text: "Got it! Table 3 is ready.\nShould I prep the usual?",
-      createdAtISO: isoMinutesAgo(5),
-    },
-    {
-      id: createMessageId(),
-      sender: "venue",
-      threadId: "vip-ops",
-      authorName: "Sarah",
-      authorAvatarSrc: "/images/avatars/woman1.png",
-      authorFallback: "S",
-      text: "Yes, 2 bottles of Ace of Spades and mixers",
-      createdAtISO: isoMinutesAgo(4),
-    },
-    {
-      id: createMessageId(),
-      sender: "venue",
-      threadId: "vip-ops",
-      authorName: "Mike",
-      authorAvatarSrc: "/images/avatars/man3.png",
-      authorFallback: "M",
-      text: "Table 1 needs 2 bottles of tequila, add sparklers",
-      createdAtISO: isoMinutesAgo(3),
-    },
-    {
-      id: createMessageId(),
-      sender: "venue",
-      threadId: "vip-ops",
-      authorName: "VIP Operations",
-      authorAvatarSrc: "/images/avatars/man2.png",
-      authorFallback: "VO",
-      text: "Table 3 confirmed for Marcus — assign runner + ice bucket.",
-      createdAtISO: isoMinutesAgo(2),
-    },
-  ]
+  return []
 }
 
 function getAutoReply(userText: string) {
@@ -251,7 +146,6 @@ export function GuestChatTab({
 
   const threads = React.useMemo(() => {
     const byId = new Map<string, GuestChatThread>()
-    for (const t of demoThreads) byId.set(t.id, t)
     for (const m of messages) {
       const tid = getThreadIdOrDefault(m.threadId)
       if (byId.has(tid)) continue
@@ -307,22 +201,7 @@ export function GuestChatTab({
           ? getAutoReply(cleaned)
           : "Copy — we’re on it."
 
-      const replyMeta =
-        resolvedActiveThreadId === "vip-ops"
-          ? {
-              threadId: resolvedActiveThreadId,
-              authorName: "Sarah",
-              authorAvatarSrc: "/images/avatars/woman1.png",
-              authorFallback: "S",
-            }
-          : {
-              threadId: resolvedActiveThreadId,
-              authorName: "Concierge",
-              authorAvatarSrc: "/images/avatars/man2.png",
-              authorFallback: "VC",
-            }
-
-      onChangeMessages([...next, createVenueReply(replyText, replyMeta)])
+      onChangeMessages([...next, createVenueReply(replyText)])
       setIsReplying(false)
     }, 650)
   }
@@ -500,8 +379,8 @@ export function GuestChatTab({
                   </Button>
 
                   {(() => {
-                    const thread =
-                      threads.find((t) => t.id === resolvedActiveThreadId) ?? demoThreads[0]
+                    const thread = threads.find((t) => t.id === resolvedActiveThreadId)
+                    if (!thread) return null
                     return (
                       <>
                         <View style={{ width: 50, alignItems: "center" }}>
@@ -656,7 +535,7 @@ export function GuestChatTab({
                     </Pressable>
                   </View>
                   <Text style={{ color: theme.colors.mutedForeground, fontSize: 11, marginTop: 8 }}>
-                    Demo chat UI (local only). In production, this would sync with staff in real time.
+                    Guest chat UI (local only). This version does not yet sync with staff in real time.
                   </Text>
                 </Card>
               </View>

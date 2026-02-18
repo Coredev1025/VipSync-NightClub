@@ -1,8 +1,9 @@
+import DateTimePicker from "@react-native-community/datetimepicker"
 import { Image } from "expo-image"
-import { Calendar, ChevronRight, Clock, List, Music, Plus, Save, X } from "lucide-react-native"
+import { Calendar, ChevronRight, Clock, List, Music, Plus, X } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
-import { ScrollView, StyleSheet, Text, View } from "react-native"
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated"
 
 import { BottlesTab } from "@/components/tabs/bottles-tab"
@@ -11,7 +12,7 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { HapticPressable } from "@/components/ui/haptic-pressable"
 import { Input } from "@/components/ui/input"
-import { ModalCard, ModalSheet } from "@/components/ui/modal"
+import { ModalSheet } from "@/components/ui/modal"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { canManageVibeEvents } from "@/constants/role-permissions"
 import { useVibe, type VibeEvent, type VibeState } from "@/contexts/vibe-context"
@@ -25,6 +26,115 @@ const STATUS_ORDER: Record<VibeEvent["status"], number> = { live: 0, upcoming: 1
 function getIsOpenNow(date: Date) {
   const hour = date.getHours()
   return hour >= 21 || hour < 3
+}
+
+function formatDateForDisplay(d: Date): string {
+  const today = new Date()
+  const tomorrow = new Date(today)
+  tomorrow.setDate(tomorrow.getDate() + 1)
+  if (d.toDateString() === today.toDateString()) return "Today"
+  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow"
+  return d.toLocaleDateString(undefined, { weekday: "long", month: "short", day: "numeric" })
+}
+
+function formatDateForApi(d: Date): string {
+  const y = d.getFullYear()
+  const m = (d.getMonth() + 1).toString().padStart(2, "0")
+  const day = d.getDate().toString().padStart(2, "0")
+  return `${y}-${m}-${day}`
+}
+
+function formatTimeForDisplay(d: Date): string {
+  const h = d.getHours()
+  const m = d.getMinutes()
+  const isPm = h >= 12
+  const h12 = h % 12 || 12
+  return `${h12}:${m.toString().padStart(2, "0")} ${isPm ? "PM" : "AM"}`
+}
+
+function ScheduledTimePicker({
+  value,
+  onChange,
+  theme,
+  formatTimeForDisplay,
+}: {
+  value: string
+  onChange: (t: string) => void
+  theme: ReturnType<typeof useTheme>["theme"]
+  formatTimeForDisplay: (d: Date) => string
+}) {
+  const [showPicker, setShowPicker] = React.useState(false)
+  const [pickerValue, setPickerValue] = React.useState(() => {
+    const d = new Date()
+    d.setHours(22, 0, 0, 0)
+    return d
+  })
+  const parseTime = (t: string): Date => {
+    const [match, h, m, ampm] = t.match(/(\d+):(\d+)\s*(AM|PM)/i) ?? []
+    if (match) {
+      let hour = parseInt(h!, 10)
+      if (ampm?.toUpperCase() === "PM" && hour < 12) hour += 12
+      if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0
+      const d = new Date()
+      d.setHours(hour, parseInt(m!, 10), 0, 0)
+      return d
+    }
+    const d = new Date()
+    d.setHours(22, 0, 0, 0)
+    return d
+  }
+  return (
+    <View>
+      <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>
+        Scheduled Time
+      </Text>
+      <Pressable
+        onPress={() => {
+          if (value) setPickerValue(parseTime(value))
+          setShowPicker(true)
+        }}
+        style={({ pressed }) => [
+          { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.input },
+          pressed && { opacity: 0.8 },
+        ]}
+      >
+        <Text style={{ color: value ? theme.colors.foreground : theme.colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 15 }}>
+          {value || "Select time"}
+        </Text>
+      </Pressable>
+      {showPicker && (
+        Platform.OS === "android" ? (
+          <View style={{ marginTop: 8 }}>
+            <DateTimePicker
+              value={pickerValue}
+              mode="time"
+              display="default"
+              onChange={(ev, d) => {
+                if (ev.type === "set" && d) {
+                  setPickerValue(d)
+                  onChange(formatTimeForDisplay(d))
+                }
+                setShowPicker(false)
+              }}
+            />
+          </View>
+        ) : (
+          <DateTimePicker
+            value={pickerValue}
+            mode="time"
+            display="spinner"
+            onChange={(ev, d) => {
+              if (ev.type === "set" && d) {
+                setPickerValue(d)
+                onChange(formatTimeForDisplay(d))
+              }
+              setShowPicker(false)
+            }}
+          />
+        )
+      )}
+    </View>
+  )
 }
 
 /** Sort by most recent ranking: live first, then upcoming; within same status by id (newer first). */
@@ -44,11 +154,9 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
   const { toast } = useToast()
   const { theme } = useTheme()
   const { vibe, setVibe, vibeEvents, addVibeEvent } = useVibe()
-  const [showEditVibe, setShowEditVibe] = React.useState(false)
   const [showMenuModal, setShowMenuModal] = React.useState(false)
   const [showAddEventSheet, setShowAddEventSheet] = React.useState(false)
   const [showAllEventsSheet, setShowAllEventsSheet] = React.useState(false)
-  const [editForm, setEditForm] = React.useState<VibeState>(vibe)
   const sortedEvents = React.useMemo(() => sortVibeEventsByRecent(vibeEvents), [vibeEvents])
   const topVibeEvents = React.useMemo(() => sortedEvents.slice(0, TOP_VIBE_EVENTS), [sortedEvents])
   /** Nightclub permissions: only manager & owner can add/edit events; promoter & door view only. */
@@ -60,44 +168,36 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
     genres: "",
     status: "upcoming",
   })
+  const [showDatePicker, setShowDatePicker] = React.useState(false)
+  const [showTimePicker, setShowTimePicker] = React.useState(false)
+  const [datePickerValue, setDatePickerValue] = React.useState(() => new Date())
+  const [timePickerValue, setTimePickerValue] = React.useState(() => {
+    const d = new Date()
+    d.setHours(22, 0, 0, 0)
+    return d
+  })
 
   const isOpenNow = getIsOpenNow(new Date())
 
-  React.useEffect(() => {
-    setEditForm(vibe)
-  }, [vibe])
+  const currentEvent = React.useMemo(() => {
+    return sortedEvents.find((e) => e.status === "live") ?? sortedEvents[0] ?? null
+  }, [sortedEvents])
 
-  function handleSaveVibe() {
-    // Generate initials from DJ name
-    const initials = editForm.djName
+  const displayDjName = currentEvent?.djName || vibe.djName
+  const displayGenres = currentEvent?.genres || vibe.genres
+  const displayInitials =
+    (displayDjName || "")
       .split(" ")
+      .filter(Boolean)
       .map((n) => n[0])
       .join("")
       .toUpperCase()
-      .slice(0, 2)
-
-    const updatedVibe: VibeState = {
-      ...editForm,
-      djInitials: initials || "DJ",
-    }
-
-    setVibe(updatedVibe)
-    setShowEditVibe(false)
-    toast({
-      title: "Vibe updated",
-      description: "Changes will be visible to guests immediately.",
-    })
-  }
-
-  function handleStatusChange(status: VibeState["djStatus"]) {
-    setEditForm((prev) => ({ ...prev, djStatus: status }))
-  }
+      .slice(0, 2) || vibe.djInitials || "DJ"
 
   function handleToggleDecks() {
     const nextStatus: VibeState["djStatus"] = vibe.djStatus === "ON DECKS" ? "OFF DECKS" : "ON DECKS"
     const updated: VibeState = { ...vibe, djStatus: nextStatus }
     setVibe(updated)
-    setEditForm(updated)
     toast({
       title: "Vibe updated",
       description: `Status set to ${nextStatus}.`,
@@ -122,6 +222,12 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
     })
     setShowAddEventSheet(false)
     setAddEventForm({ djName: "", date: "", time: "", genres: "", status: "upcoming" })
+    setDatePickerValue(new Date())
+    setTimePickerValue((prev) => {
+      const d = new Date(prev)
+      d.setHours(22, 0, 0, 0)
+      return d
+    })
     toast({ title: "Event added", description: `${newEvent.djName} has been added to Vibe Events.` })
   }
 
@@ -161,25 +267,17 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
         <Animated.View entering={FadeInDown.delay(100).duration(300).springify()}>
           <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonPurple}55` }}>
             <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-              <NeonAvatar fallback={vibe.djInitials} size="xl" glow="purple" showPulse showRing />
+              <NeonAvatar fallback={displayInitials} size="xl" glow="purple" showPulse showRing />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 16 }} numberOfLines={1}>
-                  {vibe.djName}
+                  {displayDjName}
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <Music size={14} color={theme.colors.mutedForeground} />
                   <Text style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-                    {vibe.genres}
+                    {displayGenres}
                   </Text>
                 </View>
-                {vibe.scheduledTime && (
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
-                    <Calendar size={14} color={theme.colors.neonCyan} />
-                    <Text style={{ color: theme.colors.neonCyan, fontSize: 12, fontFamily: "Orbitron_800ExtraBold" }}>
-                      Scheduled: {vibe.scheduledTime}
-                    </Text>
-                  </View>
-                )}
               </View>
               <View style={{ flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                 <HapticPressable
@@ -199,12 +297,6 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
                   >
                     {vibe.djStatus}
                   </Badge>
-                </HapticPressable>
-                <HapticPressable
-                  onPress={() => setShowEditVibe(true)}
-                  accessibilityLabel="Edit vibe details"
-                >
-                  <Badge tone="cyan">Edit vibe</Badge>
                 </HapticPressable>
               </View>
             </View>
@@ -344,105 +436,6 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
         </Animated.View>
       </View>
 
-      {/* Edit Vibe Modal */}
-      <ModalCard open={showEditVibe} onClose={() => setShowEditVibe(false)}>
-        <View style={{ gap: 16 }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
-            <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 18 }}>
-              Manage Vibe
-            </Text>
-            <Button
-              size="icon"
-              variant="ghost"
-              tone="neutral"
-              onPress={() => setShowEditVibe(false)}
-            >
-              <X size={18} color={theme.colors.mutedForeground} />
-            </Button>
-          </View>
-
-          <View style={{ gap: 12 }}>
-            <View>
-              <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>
-                DJ Name
-              </Text>
-              <Input
-                placeholder="DJ Name"
-                value={editForm.djName}
-                onChangeText={(text) => setEditForm((prev) => ({ ...prev, djName: text.toUpperCase() }))}
-              />
-            </View>
-
-            <View>
-              <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>
-                Status
-              </Text>
-              <View style={{ flexDirection: "row", gap: 8, flexWrap: "wrap" }}>
-                {(["ON DECKS", "OFF DECKS", "SCHEDULED", "BREAK"] as const).map((status) => (
-                  <Button
-                    key={status}
-                    size="sm"
-                    variant={editForm.djStatus === status ? "solid" : "outline"}
-                    tone={editForm.djStatus === status ? "pink" : "neutral"}
-                    style={{ flex: status === "ON DECKS" || status === "OFF DECKS" ? 1 : undefined, minWidth: status === "SCHEDULED" || status === "BREAK" ? 120 : undefined }}
-                    onPress={() => handleStatusChange(status)}
-                  >
-                    {status}
-                  </Button>
-                ))}
-              </View>
-            </View>
-
-            <View>
-              <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>
-                Genres
-              </Text>
-              <Input
-                placeholder="e.g., Deep House • Techno"
-                value={editForm.genres}
-                onChangeText={(text) => setEditForm((prev) => ({ ...prev, genres: text }))}
-              />
-            </View>
-
-            {editForm.djStatus === "SCHEDULED" && (
-              <View>
-                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>
-                  Scheduled Time
-                </Text>
-                <Input
-                  placeholder="e.g., 10:00 PM"
-                  value={editForm.scheduledTime || ""}
-                  onChangeText={(text) => setEditForm((prev) => ({ ...prev, scheduledTime: text }))}
-                />
-              </View>
-            )}
-
-            <View style={{ flexDirection: "row", gap: 10, marginTop: 8 }}>
-              <Button
-                variant="outline"
-                tone="neutral"
-                style={{ flex: 1 }}
-                onPress={() => {
-                  setEditForm(vibe)
-                  setShowEditVibe(false)
-                }}
-              >
-                Cancel
-              </Button>
-              <Button
-                variant="gradient"
-                style={{ flex: 1 }}
-                onPress={handleSaveVibe}
-              >
-                <View style={styles.rowCenter}>
-                  <Save size={16} color="#fff" />
-                  <Text style={{ color: "#fff", fontFamily: "Orbitron_900Black" }}>Save</Text>
-                </View>
-              </Button>
-            </View>
-          </View>
-        </View>
-      </ModalCard>
     </ScrollView>
 
     {/* Add Event Sheet */}
@@ -465,19 +458,111 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
           </View>
           <View>
             <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>Date</Text>
-            <Input
-              placeholder="e.g. Today, Tomorrow, Friday"
-              value={addEventForm.date}
-              onChangeText={(text) => setAddEventForm((prev) => ({ ...prev, date: text }))}
-            />
+            <Pressable
+              onPress={() => {
+                setDatePickerValue(addEventForm.date ? new Date(addEventForm.date + "T12:00:00") : new Date())
+                setShowDatePicker(true)
+              }}
+              style={({ pressed }) => [
+                { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.input },
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Text style={{ color: addEventForm.date ? theme.colors.foreground : theme.colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 15 }}>
+                {addEventForm.date ? formatDateForDisplay(new Date(addEventForm.date + "T12:00:00")) : "Select date"}
+              </Text>
+            </Pressable>
+            {showDatePicker && (
+              Platform.OS === "android" ? (
+                <View style={{ marginTop: 8 }}>
+                  <DateTimePicker
+                    value={datePickerValue}
+                    mode="date"
+                    display="default"
+                    minimumDate={new Date()}
+                    onChange={(ev, d) => {
+                      if (ev.type === "set" && d) {
+                        setDatePickerValue(d)
+                        setAddEventForm((prev) => ({ ...prev, date: formatDateForApi(d) }))
+                      }
+                      setShowDatePicker(false)
+                    }}
+                  />
+                </View>
+              ) : (
+                <DateTimePicker
+                  value={datePickerValue}
+                  mode="date"
+                  display="spinner"
+                  minimumDate={new Date()}
+                  onChange={(ev, d) => {
+                    if (ev.type === "set" && d) {
+                      setDatePickerValue(d)
+                      setAddEventForm((prev) => ({ ...prev, date: formatDateForApi(d) }))
+                    }
+                    setShowDatePicker(false)
+                  }}
+                />
+              )
+            )}
           </View>
           <View>
             <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>Time</Text>
-            <Input
-              placeholder="e.g. 10:00 PM"
-              value={addEventForm.time}
-              onChangeText={(text) => setAddEventForm((prev) => ({ ...prev, time: text }))}
-            />
+            <Pressable
+              onPress={() => {
+                if (addEventForm.time) {
+                  const [match, h, m, ampm] = addEventForm.time.match(/(\d+):(\d+)\s*(AM|PM)/i) ?? []
+                  if (match) {
+                    let hour = parseInt(h, 10)
+                    if (ampm?.toUpperCase() === "PM" && hour < 12) hour += 12
+                    if (ampm?.toUpperCase() === "AM" && hour === 12) hour = 0
+                    const d = new Date()
+                    d.setHours(hour, parseInt(m, 10), 0, 0)
+                    setTimePickerValue(d)
+                  }
+                }
+                setShowTimePicker(true)
+              }}
+              style={({ pressed }) => [
+                { paddingVertical: 12, paddingHorizontal: 14, borderRadius: 12, borderWidth: 1, borderColor: theme.colors.border, backgroundColor: theme.colors.input },
+                pressed && { opacity: 0.8 },
+              ]}
+            >
+              <Text style={{ color: addEventForm.time ? theme.colors.foreground : theme.colors.mutedForeground, fontFamily: "Inter_500Medium", fontSize: 15 }}>
+                {addEventForm.time || "Select time"}
+              </Text>
+            </Pressable>
+            {showTimePicker && (
+              Platform.OS === "android" ? (
+                <View style={{ marginTop: 8 }}>
+                  <DateTimePicker
+                    value={timePickerValue}
+                    mode="time"
+                    display="default"
+                    onChange={(ev, d) => {
+                      if (ev.type === "set" && d) {
+                        setTimePickerValue(d)
+                        setAddEventForm((prev) => ({ ...prev, time: formatTimeForDisplay(d) }))
+                      }
+                      setShowTimePicker(false)
+                    }}
+                  />
+                </View>
+              ) : (
+                <DateTimePicker
+                  value={timePickerValue}
+                  mode="time"
+                  display="spinner"
+                  onChange={(ev, d) => {
+                    if (ev.type === "set" && d) {
+                      setTimePickerValue(d)
+                      setAddEventForm((prev) => ({ ...prev, time: formatTimeForDisplay(d) }))
+                    }
+                    setShowTimePicker(false)
+                  }}
+                />
+              )
+            )}
           </View>
           <View>
             <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_800ExtraBold", marginBottom: 6, fontSize: 12 }}>Genres (optional)</Text>

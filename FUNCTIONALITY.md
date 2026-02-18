@@ -16,7 +16,7 @@ VIPsyncApp is an Expo/React Native nightclub operations and guest experience app
 ## 2. Authentication & onboarding
 
 - **Auth flow steps** — Welcome → Mode selection (Pro vs User) → Role selection (Pro only) → Profile (name, optional avatar).
-- **Social sign-in** — Welcome screen offers **Continue with Google** and **Continue with Facebook** via OAuth 2.0 (`expo-auth-session`, `expo-web-browser`, `expo-crypto`). Redirect URI uses app scheme `vipsyncappmobile`. Add `extra.googleClientId` (Google Cloud OAuth 2.0 client ID) and `extra.facebookAppId` (Facebook App ID) in `app.json` or `app.config.js` to enable sign-in; otherwise the buttons show a configuration alert.
+- **Social sign-in** — Welcome screen offers **Continue with Google** (and other providers as configured). Redirect URI uses app scheme `vipsyncappmobile`.
 - **Mode selection** — **Pro**: venue staff (promoter, door, manager, owner). **User**: guest experience.
 - **Pro role selection** — Promoter, Door Staff, Manager, Owner; each with title/description and glow styling. Role persisted and used for permissions.
 - **Profile step** — Display name, optional profile photo (camera or gallery via `expo-image-picker`). Avatar shown in halo with theme glow.

@@ -98,79 +98,13 @@ export function GSChatHome({
   const [active, setActive] = React.useState(1)
   const [searchQuery, setSearchQuery] = React.useState("")
 
-  const defaultChatData: ChatItem[] = [
-    {
-      id: "main-ops",
-      img: "https://i.pravatar.cc/300?u=mainops@geekspark.com",
-      name: "Main Ops",
-      phone: "+1 (555) 100-2000",
-      lastMsg: "Table 2, i got James he wants 2 bottles of Collon.",
-      time: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
-      seen: false,
-      unread: 1,
-      group: true,
-    },
-    {
-      id: 1,
-      img: "https://i.pravatar.cc/300?u=my@geekspark.com",
-      name: "VIP Operations",
-      phone: "+1 (555) 101-2001",
-      lastMsg: "Table 3 confirmed for Marcus Chen",
-      time: new Date(Date.now() - 2 * 60 * 1000).toISOString(),
-      seen: true,
-      unread: 0,
-      group: true,
-    },
-    {
-      id: 2,
-      img: "https://i.pravatar.cc/301?u=jason@geekspark.com",
-      name: "Sarah Miller",
-      phone: "+1 (555) 102-2002",
-      lastMsg: "I need 2 more bottles for Table 7",
-      time: new Date(Date.now() - 5 * 60 * 1000).toISOString(),
-      seen: false,
-      unread: 1,
-      group: false,
-    },
-    {
-      id: 3,
-      img: "https://i.pravatar.cc/302?u=jdoe@geekspark.com",
-      name: "Mike Johnson",
-      phone: "+1 (555) 103-2003",
-      lastMsg: "VIP arriving in 10 mins",
-      time: new Date(Date.now() - 30 * 60 * 1000).toISOString(),
-      seen: false,
-      unread: 1,
-      group: false,
-    },
-    {
-      id: 4,
-      img: "https://i.pravatar.cc/303?u=marie@geekspark.com",
-      name: "Door Team",
-      phone: "+1 (555) 104-2004",
-      lastMsg: "Venue update",
-      time: new Date(Date.now() - 15 * 60 * 1000).toISOString(),
-      seen: true,
-      unread: 0,
-      group: true,
-    },
-    {
-      id: 5,
-      img: "https://i.pravatar.cc/304?u=alexander@geekspark.com",
-      name: "Bar Staff",
-      phone: "+1 (555) 105-2005",
-      lastMsg: "Running low on Grey Goose",
-      time: new Date(Date.now() - 60 * 60 * 1000).toISOString(),
-      seen: true,
-      unread: 0,
-      group: true,
-    },
-  ]
-
-  const allChatData = chatsProp != null ? chatsProp : defaultChatData
+  const baseChatData = React.useMemo<ChatItem[]>(
+    () => (Array.isArray(chatsProp) ? chatsProp : []),
+    [chatsProp]
+  )
   const chatData = hideMainOps
-    ? allChatData.filter((item) => item.name !== MAIN_OPS_NAME)
-    : allChatData
+    ? baseChatData.filter((item) => item.name !== MAIN_OPS_NAME)
+    : baseChatData
 
   const groupData = chatData.filter((item) => item.group)
   const unreadData = chatData.filter((item) => !item.seen)

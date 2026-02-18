@@ -8,7 +8,6 @@ import express from "express"
 import cors from "cors"
 import authRoutes from "./routes/auth.js"
 import bottlesRoutes from "./routes/bottles.js"
-import liveFeedRoutes from "./routes/live-feed.js"
 import vibeRoutes from "./routes/vibe.js"
 import tablesRoutes from "./routes/tables.js"
 import profileRoutes from "./routes/profile.js"
@@ -19,6 +18,9 @@ import pushRoutes from "./routes/push.js"
 import guestRoutes from "./routes/guest.js"
 import barLtoRoutes from "./routes/bar-lto.js"
 import mapImportRoutes from "./routes/map-import.js"
+import menuRoutes from "./routes/menu.js"
+import liveFeedRoutes from "./routes/live-feed.js"
+import staffRoutes from "./routes/staff.js"
 
 const app = express()
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000
@@ -48,7 +50,6 @@ app.use((req, _res, next) => {
 
 app.use("/api/auth", authRoutes)
 app.use("/api/bottles", bottlesRoutes)
-app.use("/api/live-feed", liveFeedRoutes)
 app.use("/api/vibe", vibeRoutes)
 app.use("/api/tables", tablesRoutes)
 app.use("/api/profile", profileRoutes)
@@ -59,6 +60,9 @@ app.use("/api/push", pushRoutes)
 app.use("/api/guest", guestRoutes)
 app.use("/api/bar-lto", barLtoRoutes)
 app.use("/api/map", mapImportRoutes)
+app.use("/api/menu", menuRoutes)
+app.use("/api/live-feed", liveFeedRoutes)
+app.use("/api/staff", staffRoutes)
 
 app.get("/", (_req, res) => {
   res.json({ api: "vipsync", version: "1.0.0", health: "/health" })

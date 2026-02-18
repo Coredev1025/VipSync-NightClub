@@ -52,7 +52,8 @@ import Animated, {
 } from "react-native-reanimated"
 
 import { useBottles } from "@/contexts/bottles-context"
-import { useLiveFeed, type LiveFeedItemInput } from "@/contexts/live-feed-context"
+import { useLiveFeedOptional } from "@/contexts/live-feed-context"
+import { useMenu, type BarDrinkItem, type TableServiceItem } from "@/contexts/menu-context"
 import { useTables, type Table as TableType, type TableStatus as TableStatusType } from "@/contexts/tables-context"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -73,12 +74,8 @@ type TopSegment = "map" | "list"
 type TableFilter = "all" | TableStatus
 
 type AvatarKey = keyof typeof avatars
-/** Table with asset avatar keys for display; API uses string. */
-type Table = TableType & {
-  guestAvatarKey?: AvatarKey
-  promoterAvatarKey?: AvatarKey
-  bottleGirlAvatarKey?: AvatarKey
-}
+/** Table from API/context; avatar keys may be string. */
+type Table = TableType
 
 interface StaffMember {
   id: string
@@ -89,101 +86,9 @@ interface StaffMember {
   tablesAssigned: number
 }
 
-const availableStaff: StaffMember[] = [
-  {
-    id: "1",
-    name: "Sarah M.",
-    role: "Promoter",
-    avatar: "/images/avatars/woman1.png",
-    isOnline: true,
-    tablesAssigned: 2,
-  },
-  {
-    id: "2",
-    name: "Mike J.",
-    role: "Promoter",
-    avatar: "/images/avatars/man2.png",
-    isOnline: true,
-    tablesAssigned: 1,
-  },
-  {
-    id: "3",
-    name: "John Doe",
-    role: "Promoter",
-    avatar: "/images/avatars/man1.png",
-    isOnline: true,
-    tablesAssigned: 0,
-  },
-  {
-    id: "4",
-    name: "Marcus Chen",
-    role: "Promoter",
-    avatar: "/images/avatars/man3.png",
-    isOnline: false,
-    tablesAssigned: 0,
-  },
-  {
-    id: "5",
-    name: "Alex Kim",
-    role: "Promoter",
-    avatar: "/images/avatars/man4.png",
-    isOnline: true,
-    tablesAssigned: 1,
-  },
-  {
-    id: "6",
-    name: "Lisa Wang",
-    role: "Promoter",
-    avatar: "/images/avatars/man5.png",
-    isOnline: true,
-    tablesAssigned: 0,
-  },
-]
-
-const availableBottleGirls: StaffMember[] = [
-  { id: "bg1", name: "Jessica K.", role: "Bottle girl", avatar: "/images/avatars/woman1.png", isOnline: true, tablesAssigned: 3 },
-  { id: "bg2", name: "Maya L.", role: "Bottle girl", avatar: "/images/avatars/woman1.png", isOnline: true, tablesAssigned: 2 },
-  { id: "bg3", name: "Sofia R.", role: "Bottle girl", avatar: "/images/avatars/woman1.png", isOnline: false, tablesAssigned: 0 },
-  { id: "bg4", name: "Emma T.", role: "Bottle girl", avatar: "/images/avatars/woman1.png", isOnline: true, tablesAssigned: 1 },
-]
-
 const entrancePos = { x: 50, y: 95 }
 
-// Main Bar & Specials – Table & Bar Menu sample data
-interface TableServiceItem {
-  id: string
-  title: string
-  price: string
-  capacity?: string
-  desc?: string
-  /** LTO: limited-time offer with date range */
-  limitedOffer?: boolean
-  limitedDateStart?: string
-  limitedDate?: string
-  iconKey?: BottleImageKey
-  /** Discount: toggle to show/hide discount fields (like LTO) */
-  discountOffer?: boolean
-  discountPrice?: string
-  discountTimeLimitStart?: string
-  discountTimeLimit?: string
-}
-interface BarDrinkItem {
-  id: string
-  title: string
-  desc?: string
-  price: string
-  iconKey?: BottleImageKey
-  iconColor?: string
-  /** LTO: limited-time offer with date range */
-  limitedOffer?: boolean
-  limitedDateStart?: string
-  limitedDate?: string
-  /** Discount: toggle to show/hide discount fields (like LTO) */
-  discountOffer?: boolean
-  discountPrice?: string
-  discountTimeLimitStart?: string
-  discountTimeLimit?: string
-}
+/** Staff/bottle girl options for assign/edit dropdowns; loaded from API in MapTab. */
 
 const TABLE_IMAGE_KEYS: TableImageKey[] = ["table1", "table2", "table3", "table4", "table5", "table6", "table7"]
 const BAR_ITEM_COLORS = ["#E8A838", "#00F0FF", "#00D26A"] as const // amber, cyan, green per item
@@ -248,10 +153,20 @@ const canEditPromoter = (role: MapTabUserRole | undefined) =>
 const canEditMapTables = (role: MapTabUserRole | undefined) => role !== "door"
 
 export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOrder, userRole = "manager" }: MapTabProps = {}) {
-  const { addFeedItem } = useLiveFeed()
   const { theme } = useTheme()
 
   const { tables, setTables, updateTable } = useTables()
+  const [promoterOptions, setPromoterOptions] = React.useState<StaffMember[]>([])
+  const [bottleGirlOptions, setBottleGirlOptions] = React.useState<StaffMember[]>([])
+  React.useEffect(() => {
+    if (guestMode) return
+    api.get<{ staff: StaffMember[] }>("/api/staff?role=promoter").then((data) => {
+      if (data?.staff) setPromoterOptions(data.staff)
+    }).catch(() => {})
+    api.get<{ staff: StaffMember[] }>("/api/staff?role=bottle_girl").then((data) => {
+      if (data?.staff) setBottleGirlOptions(data.staff)
+    }).catch(() => {})
+  }, [guestMode])
   const [viewMode, setViewMode] = React.useState<ViewMode>("map")
   const [highlightTableFromChat, setHighlightTableFromChat] = React.useState<number | null>(null)
 
@@ -514,17 +429,6 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
               </>
             ) : null}
           </View>
-          {!guestMode ? (
-            <HapticPressable
-              onPress={() => setShowGuestList(true)}
-              style={[styles.guestListBtn, { borderColor: theme.colors.neonCyan, backgroundColor: `${theme.colors.neonCyan}18` }]}
-              accessibilityLabel="Open guest list"
-              accessibilityRole="button"
-            >
-              <Users size={14} color={theme.colors.neonCyan} />
-              <Text style={[styles.guestListBtnText, { color: theme.colors.neonCyan }]}>Guest List</Text>
-            </HapticPressable>
-          ) : null}
         </View>
       </View>
 
@@ -612,6 +516,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
         <VoiceCommandOverlay onClose={() => setIsVoiceActive(false)} />
       </ModalCard>
 
+      {false ? (
       <ModalSheet open={showGuestList} onClose={() => setShowGuestList(false)} maxHeightPct={1} title="Guest List">
         <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 24 }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginTop: 12, marginBottom: 12 }}>
@@ -871,7 +776,9 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
           })()}
         </View>
       </ModalSheet>
+      ) : null}
 
+      {false ? (
       <ModalSheet open={showAddGuestSheet} onClose={() => setShowAddGuestSheet(false)} maxHeightPct={1} title="Add guest">
         <ScrollView
           style={{ maxHeight: "100%" }}
@@ -988,9 +895,11 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
           </Button>
         </ScrollView>
       </ModalSheet>
+      ) : null}
 
       <ModalSheet open={showAssignStaffDialog} onClose={() => setShowAssignStaffDialog(false)} maxHeightPct={1}>
         <AssignStaffDialog
+          options={bottleGirlOptions}
           currentAssigned={selectedTable?.assignedTo}
           onSelectStaff={handleAssignStaff}
         />
@@ -1005,6 +914,8 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
         >
           <TableDetailSheet
             table={tables.find((t) => t.id === selectedTable.id) ?? selectedTable}
+            promoterOptions={promoterOptions}
+            bottleGirlOptions={bottleGirlOptions}
             onClose={() => setSelectedTable(null)}
             onUnassignStaff={handleUnassignStaff}
             onGuestsChange={handleTableGuestsChange}
@@ -1021,17 +932,9 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
                     const updates: Partial<Table> = { itemsSummary: next }
                     if (pendingAmount != null) updates.pendingSpend = (t.pendingSpend ?? 0) + pendingAmount
                     handleUpdateTable(selectedTable.id, updates)
-                    addFeedItem({
-                      type: "order",
-                      title: "Bottle ordered",
-                      description: `${itemsText} - Table ${t.isDjBooth ? "DJ" : t.number}`,
-                      time: "Just now",
-                      table: t.isDjBooth ? undefined : t.number,
-                    })
                   }
                 : undefined
             }
-            onAddToLiveFeed={addFeedItem}
           />
         </ModalSheet>
       ) : null}
@@ -1046,13 +949,6 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
             table={tables.find((t) => t.id === selectedTable.id) ?? selectedTable}
             onSave={(updates) => {
               handleUpdateTable(selectedTable.id, updates)
-              addFeedItem({
-                type: "alert",
-                title: "Table info updated",
-                description: `Table ${selectedTable.isDjBooth ? "DJ" : selectedTable.number}`,
-                time: "Just now",
-                table: selectedTable.isDjBooth ? undefined : selectedTable.number,
-              })
               setShowEditTableSheet(false)
             }}
             onClose={() => setShowEditTableSheet(false)}
@@ -1584,7 +1480,7 @@ function TableMarker({
           <View style={styles.occupiedGuestRow}>
             <View style={styles.occupiedGuestAvatarWrap}>
               <NeonAvatar
-                source={table.guestAvatarKey ? avatars[table.guestAvatarKey] : avatars.man3}
+                source={table.guestAvatarKey && table.guestAvatarKey in avatars ? avatars[table.guestAvatarKey as AvatarKey] : avatars.man3}
                 fallback={(table.guestName ?? "T").slice(0, 2)}
                 size="lg"
                 glow="orange"
@@ -1620,7 +1516,7 @@ function TableMarker({
               <View style={styles.occupiedStaffCell}>
                 <Text style={[styles.occupiedStaffRoleLabel, { color: PRIMARY_TEAL }]}>PROMOTER</Text>
                 <NeonAvatar
-                  source={table.promoterAvatarKey ? avatars[table.promoterAvatarKey] : avatars.man2}
+                  source={table.promoterAvatarKey && table.promoterAvatarKey in avatars ? avatars[table.promoterAvatarKey as AvatarKey] : avatars.man2}
                   fallback={table.primaryStaff.slice(0, 2)}
                   size="sm"
                   glow="cyan"
@@ -1633,7 +1529,7 @@ function TableMarker({
               <View style={styles.occupiedStaffCell}>
                 <Text style={[styles.occupiedStaffRoleLabel, { color: BACKUP_PURPLE }]}>BOTTLE GIRL</Text>
                 <NeonAvatar
-                  source={table.bottleGirlAvatarKey ? avatars[table.bottleGirlAvatarKey] : avatars.woman1}
+                  source={table.bottleGirlAvatarKey && table.bottleGirlAvatarKey in avatars ? avatars[table.bottleGirlAvatarKey as AvatarKey] : avatars.woman1}
                   fallback={table.backupStaff.slice(0, 2)}
                   size="sm"
                   glow="pink"
@@ -2406,25 +2302,26 @@ function EditStaffListSheet({
 
 function TableDetailSheet({
   table,
+  promoterOptions = [],
+  bottleGirlOptions = [],
   onClose,
   onUnassignStaff,
   onGuestsChange,
   onEditTable,
   onAddBottle,
   onUpdateTable,
-  onAddToLiveFeed,
   canEditTableGirl = true,
   canEditPromoter = false,
 }: {
   table: Table
+  promoterOptions?: StaffMember[]
+  bottleGirlOptions?: StaffMember[]
   onClose: () => void
   onUnassignStaff: () => void
   onGuestsChange?: (tableId: string, delta: number) => void
   onEditTable?: () => void
   onAddBottle?: (itemsText: string, pendingAmount?: number) => void
   onUpdateTable?: (tableId: string, updates: Partial<Table>) => void
-  /** When provided, table events (promoter/server/mark complete) are added to Live Feed. */
-  onAddToLiveFeed?: (item: LiveFeedItemInput) => void
   /** Manager/owner see and edit table girl; promoter cannot edit promoter. */
   canEditTableGirl?: boolean
   /** Manager/owner can edit promoter; promoter and door cannot. Default false so promoter never sees it. */
@@ -2432,9 +2329,10 @@ function TableDetailSheet({
 }) {
   const { theme } = useTheme()
   const { bottles } = useBottles()
+  const liveFeed = useLiveFeedOptional()
   const statusColor = getStatusColor(theme, table.status)
   const assigned = table.assignedTo
-  const staff = assigned ? availableStaff.find((s) => s.name === assigned) : undefined
+  const staff = assigned ? bottleGirlOptions.find((s: StaffMember) => s.name === assigned) : undefined
   const [showAddBottleModal, setShowAddBottleModal] = React.useState(false)
   const [pendingBottleAdd, setPendingBottleAdd] = React.useState<{ itemsText: string; pendingAmount?: number } | null>(null)
   const [showEditPromoterSheet, setShowEditPromoterSheet] = React.useState(false)
@@ -2653,7 +2551,7 @@ function TableDetailSheet({
               <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                   <NeonAvatar
-                    source={table.promoterAvatarKey ? avatars[table.promoterAvatarKey] : avatars.man2}
+                    source={table.promoterAvatarKey && table.promoterAvatarKey in avatars ? avatars[table.promoterAvatarKey as AvatarKey] : avatars.man2}
                     fallback={(table.primaryStaff ?? assigned ?? "").slice(0, 2)}
                     size="lg"
                     glow="pink"
@@ -2677,7 +2575,7 @@ function TableDetailSheet({
             <Card variant="glass" style={{ padding: 12, borderColor: `${theme.colors.neonCyan}55`, marginBottom: 12 }}>
               <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
                 <NeonAvatar
-                  source={table.bottleGirlAvatarKey ? avatars[table.bottleGirlAvatarKey] : avatars.woman1}
+                  source={table.bottleGirlAvatarKey && table.bottleGirlAvatarKey in avatars ? avatars[table.bottleGirlAvatarKey as AvatarKey] : avatars.woman1}
                   fallback={table.backupStaff.slice(0, 2)}
                   size="lg"
                   glow="cyan"
@@ -2756,13 +2654,6 @@ function TableDetailSheet({
                     text: "Yes",
                     onPress: () => {
                       onUpdateTable?.(table.id, { status: "open" })
-                      onAddToLiveFeed?.({
-                        type: "order",
-                        title: "Table marked complete",
-                        description: `Table ${table.isDjBooth ? "DJ" : table.number}`,
-                        time: "Just now",
-                        table: table.isDjBooth ? undefined : table.number,
-                      })
                       onClose()
                     },
                   },
@@ -2781,18 +2672,11 @@ function TableDetailSheet({
       <ModalSheet open={showEditPromoterSheet} onClose={() => setShowEditPromoterSheet(false)} maxHeightPct={1}>
         <EditStaffListSheet
           title="Edit promoter"
-          options={availableStaff}
+          options={promoterOptions}
           currentValue={table.promoter ?? ""}
           placeholder="Promoter name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { promoter: name || undefined })
-            onAddToLiveFeed?.({
-              type: "arrival",
-              title: "Promoter updated",
-              description: `Table ${table.isDjBooth ? "DJ" : table.number} - ${name || "—"}`,
-              time: "Just now",
-              table: table.isDjBooth ? undefined : table.number,
-            })
             setShowEditPromoterSheet(false)
           }}
           onClose={() => setShowEditPromoterSheet(false)}
@@ -2801,18 +2685,11 @@ function TableDetailSheet({
       <ModalSheet open={showEditBottleGirlSheet} onClose={() => setShowEditBottleGirlSheet(false)} maxHeightPct={1}>
         <EditStaffListSheet
           title="Edit bottle girl"
-          options={availableBottleGirls}
+          options={bottleGirlOptions}
           currentValue={table.server ?? ""}
           placeholder="Bottle girl name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { server: name || undefined })
-            onAddToLiveFeed?.({
-              type: "order",
-              title: "Bottle girl updated",
-              description: `Table ${table.isDjBooth ? "DJ" : table.number} - ${name || "—"}`,
-              time: "Just now",
-              table: table.isDjBooth ? undefined : table.number,
-            })
             setShowEditBottleGirlSheet(false)
           }}
           onClose={() => setShowEditBottleGirlSheet(false)}
@@ -2881,6 +2758,13 @@ function TableDetailSheet({
         onPrimary={() => {
           if (pendingBottleAdd) {
             onAddBottle?.(pendingBottleAdd.itemsText, pendingBottleAdd.pendingAmount)
+            liveFeed?.addFeedItem({
+              type: "order",
+              title: "Bottle added",
+              description: pendingBottleAdd.itemsText,
+              time: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+              table: table.isDjBooth ? undefined : table.number,
+            })
             setShowAddBottleModal(false)
             setPendingBottleAdd(null)
           }
@@ -3358,72 +3242,72 @@ type DatePickerTarget = { itemId: string; source: "table" | "bar"; end: "start" 
 function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
   const { theme } = useTheme()
   const { toast } = useToast()
+  const {
+    tableItems,
+    barItems,
+    addTableItem,
+    addBarItem,
+    updateTableItem,
+    updateBarItem,
+    removeTableItem,
+    removeBarItem,
+    saveTableItem,
+    saveBarItem,
+    deleteTableItem,
+    deleteBarItem,
+  } = useMenu()
   const [activeTab, setActiveTab] = React.useState<BarSpecialsTab>("table")
   const [menuEditMode, setMenuEditMode] = React.useState(false)
   const [showUpdateDetectedDialog, setShowUpdateDetectedDialog] = React.useState(false)
-  const [tableItems, setTableItems] = React.useState<TableServiceItem[]>(() => [])
-  const [barItems, setBarItems] = React.useState<BarDrinkItem[]>(() => [])
+  const [savingItemId, setSavingItemId] = React.useState<string | null>(null)
   const [ltoDatePicker, setLtoDatePicker] = React.useState<LtoDatePickerTarget | null>(null)
   const [datePicker, setDatePicker] = React.useState<DatePickerTarget | null>(null)
   const [pickerValue, setPickerValue] = React.useState<Date>(() => new Date())
 
-  function updateTableItem(id: string, updates: Partial<TableServiceItem>) {
-    setTableItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)))
-  }
-  function updateBarItem(id: string, updates: Partial<BarDrinkItem>) {
-    setBarItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...updates } : i)))
-  }
-
-  /** Add a new table service (bottle package) item. */
-  function addTableItem(item?: Partial<TableServiceItem>) {
-    const id = `table_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-    const newItem: TableServiceItem = {
-      id,
-      title: item?.title ?? "",
-      price: item?.price ?? "",
-      capacity: item?.capacity,
-      desc: item?.desc,
-      limitedOffer: item?.limitedOffer,
-      limitedDateStart: item?.limitedDateStart,
-      limitedDate: item?.limitedDate,
-      iconKey: item?.iconKey,
-      discountOffer: item?.discountOffer,
-      discountPrice: item?.discountPrice,
-      discountTimeLimitStart: item?.discountTimeLimitStart,
-      discountTimeLimit: item?.discountTimeLimit,
+  async function handleSaveTableItem(item: TableServiceItem) {
+    if (savingItemId) return
+    setSavingItemId(item.id)
+    try {
+      await saveTableItem(item)
+      setShowUpdateDetectedDialog(true)
+      toast({ title: "Saved", description: "Bottle package saved to menu." })
+    } catch (e) {
+      toast({ title: "Save failed", description: (e as Error).message, variant: "destructive" })
+    } finally {
+      setSavingItemId(null)
     }
-    setTableItems((prev) => [...prev, newItem])
   }
 
-  /** Add a new bar drink item. */
-  function addBarItem(item?: Partial<BarDrinkItem>) {
-    const id = `bar_${Date.now()}_${Math.random().toString(36).slice(2, 9)}`
-    const newItem: BarDrinkItem = {
-      id,
-      title: item?.title ?? "",
-      desc: item?.desc,
-      price: item?.price ?? "",
-      iconKey: item?.iconKey,
-      iconColor: item?.iconColor ?? BAR_ITEM_COLORS[barItems.length % BAR_ITEM_COLORS.length],
-      limitedOffer: item?.limitedOffer,
-      limitedDateStart: item?.limitedDateStart,
-      limitedDate: item?.limitedDate,
-      discountOffer: item?.discountOffer,
-      discountPrice: item?.discountPrice,
-      discountTimeLimitStart: item?.discountTimeLimitStart,
-      discountTimeLimit: item?.discountTimeLimit,
+  async function handleSaveBarItem(item: BarDrinkItem) {
+    if (savingItemId) return
+    setSavingItemId(item.id)
+    try {
+      await saveBarItem(item)
+      setShowUpdateDetectedDialog(true)
+      toast({ title: "Saved", description: "Drink saved to menu." })
+    } catch (e) {
+      toast({ title: "Save failed", description: (e as Error).message, variant: "destructive" })
+    } finally {
+      setSavingItemId(null)
     }
-    setBarItems((prev) => [...prev, newItem])
   }
 
-  /** Remove a table service item. */
-  function removeTableItem(id: string) {
-    setTableItems((prev) => prev.filter((i) => i.id !== id))
+  async function handleDeleteTableItem(id: string) {
+    try {
+      await deleteTableItem(id)
+      toast({ title: "Deleted", description: "Bottle package removed." })
+    } catch (e) {
+      toast({ title: "Delete failed", description: (e as Error).message, variant: "destructive" })
+    }
   }
 
-  /** Remove a bar drink item. */
-  function removeBarItem(id: string) {
-    setBarItems((prev) => prev.filter((i) => i.id !== id))
+  async function handleDeleteBarItem(id: string) {
+    try {
+      await deleteBarItem(id)
+      toast({ title: "Deleted", description: "Drink removed." })
+    } catch (e) {
+      toast({ title: "Delete failed", description: (e as Error).message, variant: "destructive" })
+    }
   }
 
   return (
@@ -3744,15 +3628,16 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     <Button
                       variant="solid"
                       tone="green"
+                      disabled={!!savingItemId}
                       style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center" }]}
-                      onPress={() => setShowUpdateDetectedDialog(true)}
+                      onPress={() => handleSaveTableItem(item)}
                     >
                       <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.5 }}>
                         SAVE
                       </Text>
                     </Button>
                     <HapticPressable
-                      onPress={() => removeTableItem(item.id)}
+                      onPress={() => handleDeleteTableItem(item.id)}
                       style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center", alignItems: "center" }]}
                       accessibilityLabel="Remove item"
                       accessibilityRole="button"
@@ -3834,9 +3719,9 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                 <View style={{ flexDirection: "row", alignItems: "center", flex: 1 }}>
                   {!menuEditMode ? (
                     <View style={[styles.menuItemIcon, { backgroundColor: theme.colors.muted }]}>
-                      {item.iconKey && bottleImages[item.iconKey] ? (
+                      {item.iconKey && item.iconKey in bottleImages ? (
                         <Image
-                          source={bottleImages[item.iconKey]}
+                          source={bottleImages[item.iconKey as BottleImageKey]}
                           style={styles.menuItemIconImage}
                           resizeMode="contain"
                         />
@@ -4017,15 +3902,16 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                     <Button
                       variant="solid"
                       tone="green"
+                      disabled={!!savingItemId}
                       style={[styles.selectBtn, { borderColor: "rgba(255,255,255,0.4)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center" }]}
-                      onPress={() => setShowUpdateDetectedDialog(true)}
+                      onPress={() => handleSaveBarItem(item)}
                     >
                       <Text numberOfLines={1} adjustsFontSizeToFit style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 11, letterSpacing: 0.5 }}>
                         SAVE
                       </Text>
                     </Button>
                     <HapticPressable
-                      onPress={() => removeBarItem(item.id)}
+                      onPress={() => handleDeleteBarItem(item.id)}
                       style={[styles.selectBtn, { backgroundColor: "rgba(255,59,48,0.15)", borderColor: "rgba(255,59,48,0.5)", marginLeft: 0, width: "100%", minHeight: 28, paddingVertical: 4, paddingHorizontal: 12, borderRadius: 14, justifyContent: "center", alignItems: "center" }]}
                       accessibilityLabel="Remove item"
                       accessibilityRole="button"
@@ -4216,16 +4102,18 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
 }
 
 function AssignStaffDialog({
+  options,
   currentAssigned,
   onSelectStaff,
 }: {
+  options: StaffMember[]
   currentAssigned?: string
   onSelectStaff: (name: string) => void
 }) {
   const { theme } = useTheme()
   const [query, setQuery] = React.useState("")
 
-  const filtered = availableStaff.filter((s) => {
+  const filtered = options.filter((s: StaffMember) => {
     const q = query.trim().toLowerCase()
     if (!q) return true
     return s.name.toLowerCase().includes(q) || s.role.toLowerCase().includes(q)
@@ -4243,7 +4131,7 @@ function AssignStaffDialog({
       </View>
 
       <ScrollView style={{ maxHeight: 520 }} contentContainerStyle={{ paddingBottom: 16, gap: 10 }}>
-        {filtered.map((s) => {
+        {filtered.map((s: StaffMember) => {
           const isCurrent = currentAssigned === s.name
           return (
             <Pressable
@@ -4259,7 +4147,7 @@ function AssignStaffDialog({
             >
               <NeonAvatar
                 source={resolveAvatar(s.avatar)}
-                fallback={s.name.split(" ").map((n) => n[0]).join("")}
+                fallback={s.name.split(" ").map((n: string) => n[0]).join("")}
                 size="md"
                 glow={s.isOnline ? "green" : "cyan"}
                 status={s.isOnline ? "online" : undefined}

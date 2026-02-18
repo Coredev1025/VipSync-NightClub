@@ -27,8 +27,41 @@ const VibeEventSchema = z.object({
 
 const VENUE_ID = "default"
 
+function computeInitials(name) {
+  if (!name) return "DJ"
+  return name
+    .split(" ")
+    .filter(Boolean)
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2)
+}
+
+async function setCurrentVibeFromEvent(eventRow) {
+  const initials = computeInitials(eventRow.dj_name)
+  const { error } = await supabase
+    .from("vibe")
+    .upsert(
+      {
+        venue_id: VENUE_ID,
+        dj_name: eventRow.dj_name,
+        dj_status: "ON DECKS",
+        genres: eventRow.genres,
+        dj_initials: initials,
+        scheduled_time: null,
+        current_event_id: eventRow.id,
+        updated_at: new Date().toISOString(),
+      },
+      { onConflict: "venue_id" }
+    )
+  if (error) {
+    throw error
+  }
+}
+
 router.get("/", async (req, res) => {
-  const { data, error } = await supabase.from("vibe").select("*").eq("venue_id", VENUE_ID).single()
+  const { data, error } = await supabase.from("vibe").select("*").eq("venue_id", VENUE_ID).maybeSingle()
   if (error && error.code !== "PGRST116") {
     res.status(500).json({ error: error.message })
     return
@@ -43,13 +76,30 @@ router.get("/", async (req, res) => {
     })
     return
   }
-  res.json({
+  let currentEvent = null
+  if (data.current_event_id) {
+    const { data: ev, error: evError } = await supabase
+      .from("vibe_events")
+      .select("*")
+      .eq("id", data.current_event_id)
+      .eq("venue_id", VENUE_ID)
+      .maybeSingle()
+    if (!evError && ev) {
+      currentEvent = ev
+    }
+  }
+  const base = {
     djName: data.dj_name,
     djStatus: data.dj_status,
     genres: data.genres,
     djInitials: data.dj_initials,
     scheduledTime: data.scheduled_time ?? undefined,
-  })
+  }
+  if (currentEvent) {
+    base.djName = currentEvent.dj_name
+    base.genres = currentEvent.genres
+  }
+  res.json(base)
 })
 
 router.patch("/", async (req, res) => {
@@ -122,6 +172,13 @@ router.post("/events", requireManageVibeEvents, async (req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
+  if (data && data.status === "live") {
+    try {
+      await setCurrentVibeFromEvent(data)
+    } catch (e) {
+      console.error("Failed to set current vibe from new event", e)
+    }
+  }
   res.status(201).json({
     id: data.id,
     djName: data.dj_name,
@@ -154,6 +211,26 @@ router.patch("/events/:id", requireManageVibeEvents, async (req, res) => {
   if (error) {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
     return
+  }
+  if (data) {
+    if (data.status === "live") {
+      try {
+        await setCurrentVibeFromEvent(data)
+      } catch (e) {
+        console.error("Failed to set current vibe from updated event", e)
+      }
+    } else {
+      // If this event is no longer live, clear it as the current vibe event if needed.
+      try {
+        await supabase
+          .from("vibe")
+          .update({ current_event_id: null, updated_at: new Date().toISOString() })
+          .eq("venue_id", VENUE_ID)
+          .eq("current_event_id", data.id)
+      } catch (e) {
+        console.error("Failed to clear current_event_id on vibe", e)
+      }
+    }
   }
   res.json({
     id: data.id,

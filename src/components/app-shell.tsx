@@ -421,7 +421,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
               <View style={styles.searchBarRow}>
                 <Search size={18} color={theme.colors.mutedForeground} style={styles.searchBarIcon} />
                 <Input
-                  placeholder="Search tables, guests, orders..."
+                  placeholder="Search ..."
                   containerStyle={[styles.searchBarInput, { backgroundColor: "transparent", borderWidth: 0 }]}
                   style={styles.searchBarInputText}
                 />

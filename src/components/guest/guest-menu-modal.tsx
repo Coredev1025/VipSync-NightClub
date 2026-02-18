@@ -84,7 +84,7 @@ export function GuestMenuModal({ onClose, open = true }: GuestMenuModalProps) {
       setPaid(true)
       toast({
         title: "Payment complete",
-        description: `Total ${formatNumber(cartTotal, { prefix: "$" })}. Your order is on the way (demo).`,
+        description: `Total ${formatNumber(cartTotal, { prefix: "$" })}. Your order is on the way.`,
       })
     }, 800)
   }

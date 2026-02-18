@@ -13,7 +13,7 @@ const VENUE_ID = "default"
 
 router.get("/revenue", requireOps, async (req, res) => {
   const dateStr = req.query.date || new Date().toISOString().slice(0, 10)
-  const { data, error } = await supabase
+  const { data: goalRow, error } = await supabase
     .from("revenue_goals")
     .select("*")
     .eq("venue_id", VENUE_ID)
@@ -24,10 +24,26 @@ router.get("/revenue", requireOps, async (req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
-  const goalAmount = data ? Number(data.goal_amount) : 10000
-  const currentAmount = data ? Number(data.current_amount) : 0
-  const comparisonPrevious = data?.comparison_previous_amount != null ? Number(data.comparison_previous_amount) : null
-  const comparisonLabel = data?.comparison_label ?? "vs last Saturday"
+  const goalAmount = goalRow ? Number(goalRow.goal_amount) : 10000
+  const comparisonPrevious = goalRow?.comparison_previous_amount != null ? Number(goalRow.comparison_previous_amount) : null
+  const comparisonLabel = goalRow?.comparison_label ?? "vs last Saturday"
+
+  // Current revenue = sum of (spend + pending_spend) from map_tables so add-bottle reflects immediately
+  const { data: tables, error: tablesError } = await supabase
+    .from("map_tables")
+    .select("spend, pending_spend")
+    .eq("venue_id", VENUE_ID)
+  if (tablesError) {
+    res.status(500).json({ error: tablesError.message })
+    return
+  }
+  let currentAmount = 0
+  for (const row of tables ?? []) {
+    const spend = typeof row.spend === "number" && !Number.isNaN(Number(row.spend)) ? Number(row.spend) : 0
+    const pending = typeof row.pending_spend === "number" && !Number.isNaN(Number(row.pending_spend)) ? Number(row.pending_spend) : 0
+    currentAmount += spend + pending
+  }
+
   const changeRate =
     comparisonPrevious != null && comparisonPrevious > 0
       ? ((currentAmount - comparisonPrevious) / comparisonPrevious) * 100
@@ -36,11 +52,98 @@ router.get("/revenue", requireOps, async (req, res) => {
   res.json({
     goalDate: dateStr,
     goalAmount,
-    currentAmount,
+    currentAmount: Math.round(currentAmount),
     remainingToGoal: Math.max(0, goalAmount - currentAmount),
     comparisonLabel,
     changeRate: Math.round(changeRate * 100) / 100,
     comparisonPreviousAmount: comparisonPrevious ?? undefined,
+  })
+})
+
+router.get("/quick-stats", requireOps, async (_req, res) => {
+  const now = new Date()
+
+  const { data: tables, error: tablesError } = await supabase
+    .from("map_tables")
+    .select("status, current_guests, spend, created_at")
+    .eq("venue_id", VENUE_ID)
+
+  if (tablesError) {
+    res.status(500).json({ error: tablesError.message })
+    return
+  }
+
+  let totalGuests = 0
+  let totalSpend = 0
+  let occupiedCount = 0
+  let tablesSold = 0
+  let totalStayMinutes = 0
+
+  for (const row of tables ?? []) {
+    const guests =
+      typeof row.current_guests === "number" && !Number.isNaN(row.current_guests)
+        ? row.current_guests
+        : 0
+    const spend =
+      typeof row.spend === "number" && !Number.isNaN(Number(row.spend))
+        ? Number(row.spend)
+        : 0
+
+    totalGuests += guests
+    totalSpend += spend
+
+    if (row.status === "occupied" || row.status === "booked") {
+      occupiedCount += 1
+      tablesSold += 1
+
+      if (row.created_at) {
+        const createdAt = new Date(row.created_at)
+        if (!Number.isNaN(createdAt.getTime())) {
+          const diffMinutes = Math.max(
+            0,
+            (now.getTime() - createdAt.getTime()) / 60000
+          )
+          totalStayMinutes += diffMinutes
+        }
+      }
+    }
+  }
+
+  const avgStayMinutes =
+    occupiedCount > 0 ? totalStayMinutes / occupiedCount : 0
+  const avgSpendPerGuest =
+    totalGuests > 0 ? totalSpend / totalGuests : 0
+
+  let bottlesSold = 0
+  const { data: bottles, error: bottlesError } = await supabase
+    .from("bottles")
+    .select("price")
+
+  if (!bottlesError && bottles && bottles.length > 0) {
+    const prices = bottles
+      .map((b) =>
+        typeof b.price === "number" && !Number.isNaN(Number(b.price))
+          ? Number(b.price)
+          : null
+      )
+      .filter((v) => v != null)
+
+    if (prices.length > 0) {
+      const avgBottlePrice =
+        prices.reduce((sum, v) => sum + (v ?? 0), 0) / prices.length
+      if (avgBottlePrice > 0) {
+        bottlesSold = Math.round(totalSpend / avgBottlePrice)
+      }
+    }
+  }
+
+  res.json({
+    totalGuests,
+    tablesSold,
+    bottlesSold,
+    avgStayMinutes: Math.round(avgStayMinutes * 10) / 10,
+    avgSpendPerGuest: Math.round(avgSpendPerGuest),
+    totalSpend,
   })
 })
 

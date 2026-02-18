@@ -103,6 +103,44 @@ router.post("/vip-tables/:id/bid", async (req, res) => {
   res.json({ ok: true, newBid: amount, leader: leaderName, nextBidAmount: nextBid })
 })
 
+/** Book a booking-type VIP table: sets linked map_table to status=booked so Table sold reflects in pro mode. */
+router.post("/vip-tables/:id/book", async (req, res) => {
+  const { data: vipRow, error: fetchErr } = await supabase
+    .from("vip_tables")
+    .select("id, type, map_table_id")
+    .eq("id", req.params.id)
+    .eq("venue_id", VENUE_ID)
+    .single()
+  if (fetchErr || !vipRow) {
+    res.status(404).json({ error: "VIP table not found" })
+    return
+  }
+  if (vipRow.type !== "booking") {
+    res.status(400).json({ error: "Table is not available for booking" })
+    return
+  }
+  const mapTableId = vipRow.map_table_id
+  if (!mapTableId) {
+    res.status(400).json({ error: "Table not linked to floor plan" })
+    return
+  }
+  const guestName = (req.body && req.body.guestName) || req.user?.name || req.user?.sub || "Guest"
+  const { error: updateErr } = await supabase
+    .from("map_tables")
+    .update({
+      status: "booked",
+      guest_name: guestName,
+      updated_at: new Date().toISOString(),
+    })
+    .eq("id", mapTableId)
+    .eq("venue_id", VENUE_ID)
+  if (updateErr) {
+    res.status(500).json({ error: updateErr.message })
+    return
+  }
+  res.json({ ok: true, message: "Table booked" })
+})
+
 router.get("/events", async (_req, res) => {
   const { data, error } = await supabase
     .from("vibe_events")

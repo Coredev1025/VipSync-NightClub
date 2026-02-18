@@ -1,76 +1,92 @@
-# Google Sign-In (OAuth 2.0) Setup
+# Google OAuth Setup (Supabase + Mobile)
 
-If you see **"Access blocked: Authorization Error"**, **Error 400: invalid_request**, or **404 "The requested URL was not found"** when tapping "Continue with Google", the app’s OAuth configuration doesn’t match Google’s rules. Fix it by creating the right client(s) and redirect URIs.
+This project uses **Supabase Auth** for Google sign-in (implicit flow). The flow is:
 
-## Code exchange timed out / session not exchanged
+1. **Frontend** starts OAuth with `signInWithOAuth({ provider: 'google' })`.
+2. User signs in with Google; Supabase redirects back to the app with `access_token` and `refresh_token` in the URL fragment.
+3. **Frontend** sets the Supabase session from the URL tokens, then calls **backend** `POST /api/auth/supabase` with the Supabase access token.
+4. **Backend** verifies the Supabase JWT, upserts the profile, and returns a backend JWT.
 
-If you see "Completing sign in..." then "Code exchange timed out", add your app's redirect URL to **Supabase** (not just Google Cloud):
+No Google client secret is used on the backend; Supabase handles the Google OAuth and issues JWTs.
 
-1. Supabase Dashboard → Authentication → URL Configuration → Redirect URLs
-2. Add the exact URL logged in Metro at sign-in (e.g. `vipsyncappmobile://auth/callback` or `exp://.../--/auth/callback` for Expo Go)
-3. Use `vipsyncappmobile://**` as a wildcard if needed
+---
 
-## 404: "The requested URL was not found on this server"
+## 1. Google Cloud Console
 
-Your **redirect URI** is not registered in Google Cloud. When you tap "Continue with Google", check the dev console for the logged redirect URI, then add that exact URI in [Google Cloud Console → Credentials](https://console.cloud.google.com/apis/credentials) → your **Web** OAuth client → **Authorized redirect URIs**.
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) → **APIs & Services** → **Credentials**.
+2. Create an **OAuth 2.0 Client ID** (or use an existing one):
+   - **Application type**: **Web application** (for Supabase).
+   - **Authorized redirect URIs**: add your Supabase callback URL:
+     - `https://<YOUR_PROJECT_REF>.supabase.co/auth/v1/callback`
+   - Copy the **Client ID** and **Client Secret**.
+3. For **Android** (optional, for native Google Sign-In or consistency):
+   - Create another OAuth 2.0 Client ID, type **Android**.
+   - Use your app package name (e.g. `com.vipsyncappmobile.app`) and SHA-1.
+   - You can put the Android client ID in backend `.env` as `GOOGLE_ANDROID_CLIENT_ID` for reference; Supabase uses the Web client for the redirect flow.
 
-## Why it happens (400 / Access blocked)
+---
 
-- On **Android** (standalone or dev build), the app uses a **custom scheme** redirect URI, e.g.  
-  `com.vipsyncappmobile.app:/oauthredirect`
-- A **Web application** OAuth client in Google Cloud only allows **HTTPS** redirect URIs, not custom schemes.
-- So Google blocks the request with **400 invalid_request** when you use the Web client on Android.
+## 2. Supabase Dashboard
 
-## Solution: use an Android OAuth client on Android
+1. **Authentication** → **Providers** → **Google**:
+   - Enable Google.
+   - Paste **Client ID** and **Client Secret** from the Web application OAuth client.
+   - Save.
 
-### 1. Google Cloud Console
+2. **Authentication** → **URL Configuration** → **Redirect URLs**:
+   - Add the app’s redirect URL so Supabase can redirect back after sign-in:
+     - **Production / standalone app**: `vipsyncappmobile://auth/callback`
+     - **Expo Go (dev)**: add the URL shown in the app (e.g. `exp://192.168.x.x:8081/--/auth/callback`) or use the wildcard `exp://*` if supported.
+   - Supabase may allow one wildcard; check the dashboard.
 
-1. Open [Google Cloud Console](https://console.cloud.google.com/) → your project → **APIs & Services** → **Credentials**.
-2. **Create an Android OAuth 2.0 Client** (in addition to or instead of only a Web client):
-   - **Application type:** Android  
-   - **Package name:** `com.vipsyncappmobile.app` (must match `android.package` in `app.json`)  
-   - **SHA-1 certificate fingerprint:** add the fingerprint of the build you’re testing with.
+---
 
-### 2. Get your SHA-1
+## 3. Frontend (.env)
 
-**Debug (local builds):**
-```bash
-cd android && ./gradlew signingReport
+In the project root `.env` (Expo):
+
+```env
+EXPO_PUBLIC_API_URL=http://10.0.2.2:3000
+EXPO_PUBLIC_SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+EXPO_PUBLIC_SUPABASE_ANON_KEY=your_anon_key
 ```
-Use the **SHA1** under `Variant: debug` (or the variant you run).
 
-**Windows (PowerShell):**
-```powershell
-cd android; .\gradlew.bat signingReport
+No Google keys are required in the frontend; Supabase uses its own Google provider config.
+
+---
+
+## 4. Backend (.env)
+
+In `backend/.env`:
+
+```env
+SUPABASE_JWT_SECRET=<from Supabase Dashboard → Project Settings → API → JWT Secret>
+SUPABASE_URL=https://YOUR_PROJECT.supabase.co
+SUPABASE_SERVICE_ROLE_KEY=your_service_role_key
 ```
 
-**EAS / release:** Use the SHA-1 from your keystore or from EAS/Play Console. Add every SHA-1 you use (debug, release, upload key) to the Android OAuth client.
+Optional (for `GET /api/auth/config` and reference):
 
-### 3. Configure the app
+```env
+GOOGLE_CLIENT_ID=your_web_client_id.apps.googleusercontent.com
+GOOGLE_ANDROID_CLIENT_ID=your_android_client_id.apps.googleusercontent.com
+```
 
-Set the **Android** client ID so the app uses it on Android:
+---
 
-- **.env** (or EAS env vars):
-  ```env
-  EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=YOUR_ANDROID_CLIENT_ID.apps.googleusercontent.com
-  ```
-- Optionally keep the Web client for Expo Go / web:
-  ```env
-  EXPO_PUBLIC_GOOGLE_CLIENT_ID=YOUR_WEB_CLIENT_ID.apps.googleusercontent.com
-  ```
+## 5. Verify
 
-Rebuild the app after changing env (e.g. `npx expo start --clear` or a new dev build).
+- **Frontend**: Tap “Continue with Google” on the welcome screen. An in-app browser should open; after signing in with Google you are redirected back and signed in.
+- **Backend**: `GET /api/auth/config` returns `providers.google: true` when `GOOGLE_CLIENT_ID` is set, and `redirectUrlHint: "vipsyncappmobile://auth/callback"`.
+- **Deep link**: If you open the app via `vipsyncappmobile://auth/callback#access_token=...&refresh_token=...` (e.g. from a different browser), the auth callback screen should set the session and complete sign-in.
 
-## Summary
+---
 
-| Environment   | OAuth client type | Where to set it |
-|---------------|-------------------|------------------|
-| Android app   | Android           | `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID` |
-| Expo Go / web | Web application   | `EXPO_PUBLIC_GOOGLE_CLIENT_ID` |
+## Troubleshooting
 
-After adding the Android client with the correct package name and SHA-1 (and setting the Android client ID in the app when on Android), the "Authorization Error" / 400 should be resolved.
-
-### If it still fails (400 / Access blocked)
-
-1. **Restart Expo so env is picked up** — After changing `.env`, run `npx expo start --clear`, then reload the app.
-2. **Confirm Android client has your SHA-1** — Run `cd android && .\gradlew.bat signingReport` (Windows) or `./gradlew signingReport` (Mac/Linux), copy the **SHA1** under your variant, and add it to the Android OAuth client in Google Cloud.
+| Issue | Check |
+|-------|--------|
+| “Google sign-in is not available” | Supabase → Auth → Providers → Google enabled; Client ID/Secret correct. |
+| “Invalid sign-in link” / redirect not working | Supabase → Auth → URL Configuration → add `vipsyncappmobile://auth/callback` (and Expo Go URL if needed). |
+| “Invalid sign-in link” / tokens missing | Ensure Supabase redirect URL is allowed; try again from the app. |
+| Backend 401/503 on token exchange | Backend `.env` `SUPABASE_JWT_SECRET` must match Supabase Dashboard → Project Settings → API → JWT Secret. |

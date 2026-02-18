@@ -25,7 +25,7 @@ npm run db:push
 ```bash
 cd backend
 cp .env.example .env
-# Edit .env: add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, GOOGLE_CLIENT_ID
+# Edit .env: add SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY, SUPABASE_JWT_SECRET
 npm run dev
 ```
 
@@ -39,9 +39,6 @@ Add to `.env` (project root):
 # Backend API URL - use your machine's local IP when testing on device
 EXPO_PUBLIC_API_URL=http://10.0.2.2:3000
 
-# Google OAuth (same as backend)
-EXPO_PUBLIC_GOOGLE_CLIENT_ID=...
-EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID=...
 ```
 
 For **Android emulator**, use `http://10.0.2.2:3000` to reach host machine's localhost.
@@ -70,7 +67,7 @@ For **Android emulator**, use `http://10.0.2.2:3000` to reach host machine's loc
 | Step | Frontend | Backend |
 |------|----------|---------|
 | **URL** | `.env`: `EXPO_PUBLIC_API_URL=http://...:3000` (see `.env.example`) | Runs on `http://0.0.0.0:3000` (or `PORT`) |
-| **Auth** | After sign-in (Supabase/Google), app calls `POST /api/auth/supabase` with `access_token`; backend returns JWT. App stores it and sends `Authorization: Bearer <token>` on every API request. | `authMiddleware` reads `Authorization`, verifies JWT; `requirePermission` checks role for protected routes. |
+| **Auth** | After sign-in (Supabase), app calls `POST /api/auth/supabase` with `access_token`; backend returns JWT. App stores it and sends `Authorization: Bearer <token>` on every API request. | `authMiddleware` reads `Authorization`, verifies JWT; `requirePermission` checks role for protected routes. |
 | **CORS** | N/A (same-origin or app origin) | `cors({ origin: true, credentials: true })` so app can call from any origin. |
 | **Health** | `GET /health` is unauthenticated; use for `checkApiReachable()`. | Responds `{ ok: true }`. |
 | **Connection state** | Optional: `GET /connection` to see backend-side activity. | Responds `lastRequestAt`, `requestCount`, `startedAt` (no auth). |
@@ -107,5 +104,5 @@ If the app shows "Unauthorized" on API screens, the backend is reachable but the
 
 1. **Backend running:** `cd backend && npm run dev` → log shows `VIPsync API listening on http://0.0.0.0:3000`.
 2. **Frontend URL:** In Metro/Expo console on app start you should see `[API] App started — getApiBaseUrl(): http://...` and `[API] checkApiReachable(): YES — backend reachable` (or NO if backend is down / wrong URL).
-3. **Auth:** Sign in with Google/Supabase; app exchanges token via `POST /api/auth/supabase` and stores backend JWT. Subsequent calls (e.g. live-feed, bottles) include `Authorization: Bearer <token>`.
+3. **Auth:** Sign in with Supabase; app exchanges token via `POST /api/auth/supabase` and stores backend JWT. Subsequent calls (e.g. live-feed, bottles) include `Authorization: Bearer <token>`.
 4. **Feature check:** Open a screen that uses the API (e.g. Ops → live feed, or Bottles). Data loads = communication is working. 401 = token missing/invalid; 403 = role insufficient; 4xx/5xx body = validation or server error.
