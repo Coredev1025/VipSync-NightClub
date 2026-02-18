@@ -9,7 +9,6 @@ router.use(authMiddleware)
 const CreateChatSchema = z.object({
   name: z.string(),
   avatar: z.string().optional(),
-  phone: z.string().optional(),
   isGroup: z.boolean().optional(),
   memberIds: z.array(z.string()).optional(),
 })
@@ -17,7 +16,6 @@ const CreateChatSchema = z.object({
 const UpdateChatSchema = z.object({
   name: z.string().optional(),
   avatar: z.string().optional(),
-  phone: z.string().optional(),
   isGroup: z.boolean().optional(),
 })
 
@@ -40,7 +38,6 @@ function chatRowToItem(r, lastMessage, unread = 0) {
     id: r.id,
     name: r.name ?? "Chat",
     avatar: r.avatar ?? undefined,
-    phone: r.phone ?? undefined,
     lastMessage: lastMessage?.msg ?? "",
     time: lastMessage?.time ?? new Date().toISOString(),
     unread,
@@ -57,7 +54,7 @@ router.get("/", async (req, res) => {
   }
   const { data: chats, error: chatsErr } = await supabase
     .from("chats")
-    .select("id, name, avatar, phone, is_group, created_at")
+    .select("id, name, avatar, is_group, created_at")
     .order("updated_at", { ascending: false })
   if (chatsErr) {
     res.status(500).json({ error: chatsErr.message })
@@ -99,7 +96,6 @@ router.post("/", async (req, res) => {
     .insert({
       name: parsed.data.name,
       avatar: parsed.data.avatar ?? null,
-      phone: parsed.data.phone ?? null,
       is_group: parsed.data.isGroup ?? false,
       created_by: userId,
     })

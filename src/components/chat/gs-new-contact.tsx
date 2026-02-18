@@ -13,7 +13,6 @@ interface Contact {
   name: string
   avatar?: string
   status?: string
-  phone?: string
   email?: string
 }
 
@@ -123,7 +122,6 @@ export function GSNewContact({ onBack, onSave }: NewContactProps) {
   const styles = getStyles(mode, theme)
   const [name, setName] = React.useState("")
   const [status, setStatus] = React.useState("")
-  const [phone, setPhone] = React.useState("")
   const [email, setEmail] = React.useState("")
   const [avatarUri, setAvatarUri] = React.useState<string | null>(null)
 
@@ -166,7 +164,6 @@ export function GSNewContact({ onBack, onSave }: NewContactProps) {
     const newContact: Omit<Contact, "id"> = {
       name: name.trim(),
       status: status.trim() || undefined,
-      phone: phone.trim() || undefined,
       email: email.trim() || undefined,
       avatar: avatarUri || undefined,
     }
@@ -228,18 +225,6 @@ export function GSNewContact({ onBack, onSave }: NewContactProps) {
               placeholderTextColor={theme.colors.mutedForeground}
               value={status}
               onChangeText={setStatus}
-            />
-          </View>
-
-          <View>
-            <Text style={styles.inputLabel}>Phone</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter phone number"
-              placeholderTextColor={theme.colors.mutedForeground}
-              value={phone}
-              onChangeText={setPhone}
-              keyboardType="phone-pad"
             />
           </View>
 

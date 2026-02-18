@@ -1,5 +1,6 @@
 import { Canvas, Group, Path, Skia } from "@shopify/react-native-skia"
 import {
+  Activity,
   ArrowUpRight,
   Clock,
   DollarSign,
@@ -22,6 +23,8 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
+import { useLiveFeedOptional } from "@/contexts/live-feed-context"
+import { useTablesOptional } from "@/contexts/tables-context"
 import { Card } from "@/components/ui/card"
 import { api, isApiConnected } from "@/lib/api"
 import { formatNumber } from "@/lib/utils"
@@ -396,6 +399,9 @@ function canViewOps(role: MapTabUserRole | undefined): boolean {
 export function OpsTab({ userRole }: OpsTabProps = {}) {
   const { theme } = useTheme()
   const canViewFeed = canViewOps(userRole)
+  const liveFeed = useLiveFeedOptional()
+  const feedItems = liveFeed?.feedItems ?? []
+  const tables = useTablesOptional()?.tables ?? []
 
   const [revenueData, setRevenueData] = React.useState<{
     goalAmount: number
@@ -465,7 +471,7 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
       .catch(() => {
         setLoadError((prev) => prev ?? "Could not load ops quick stats.")
       })
-  }, [connected, canViewFeed])
+  }, [connected, canViewFeed, feedItems.length, tables])
 
   const hasRevenueData =
     revenueData &&
@@ -631,6 +637,59 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
               delay={150}
             />
           </View>
+
+          {canViewFeed && liveFeed ? (
+            <MotiView
+              from={{ opacity: 0, translateY: 10 }}
+              animate={{ opacity: 1, translateY: 0 }}
+              transition={{ type: "timing", duration: 220, delay: 180 }}
+              style={{ gap: 8 }}
+            >
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                <Activity size={18} color={theme.colors.neonCyan} />
+                <Text style={{ color: theme.colors.foreground, fontSize: 16, fontFamily: "Orbitron_900Black" }}>
+                  Live feed
+                </Text>
+              </View>
+              <Card variant="glass" style={{ padding: 12, gap: 8, maxHeight: 240 }}>
+                <ScrollView style={{ maxHeight: 216 }} showsVerticalScrollIndicator={false}>
+                  {feedItems.length === 0 ? (
+                    <View style={{ paddingVertical: 24, paddingHorizontal: 8, alignItems: "center" }}>
+                      <Text style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
+                        Bottles, promoter and bottle girl changes will appear here.
+                      </Text>
+                    </View>
+                  ) : (
+                    feedItems.map((item) => (
+                      <View
+                        key={item.id}
+                        style={{
+                          flexDirection: "row",
+                          alignItems: "center",
+                          justifyContent: "space-between",
+                          paddingVertical: 8,
+                          paddingHorizontal: 8,
+                          borderBottomWidth: 1,
+                          borderBottomColor: theme.colors.border,
+                        }}
+                      >
+                        <View style={{ flex: 1, gap: 2 }}>
+                          <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                            {item.title}
+                          </Text>
+                          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }} numberOfLines={1}>
+                            {item.description}
+                            {item.table != null ? ` · T${item.table}` : ""}
+                          </Text>
+                        </View>
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{item.time}</Text>
+                      </View>
+                    ))
+                  )}
+                </ScrollView>
+              </Card>
+            </MotiView>
+          ) : null}
         </MotiView>
       </ScrollView>
     </View>

@@ -49,13 +49,15 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderRadius: 999,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     alignSelf: "flex-start",
   },
   text: {
-    fontSize: 11,
+    fontSize: 10,
     fontFamily: "Inter_600SemiBold",
     letterSpacing: 0.3,
+    includeFontPadding: false,
+    lineHeight: 12,
   },
 })
 

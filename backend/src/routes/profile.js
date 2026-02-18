@@ -9,7 +9,6 @@ router.use(authMiddleware)
 const UpdateProfileSchema = z.object({
   name: z.string().optional(),
   email: z.string().email().optional(),
-  phone: z.string().optional(),
   picture: z.string().optional(),
   mode: z.enum(["pro", "user"]).optional(),
   pro_role: z.enum(["promoter", "door", "manager", "owner"]).optional(),
@@ -34,7 +33,6 @@ router.get("/", async (req, res) => {
     id: data.id,
     email: data.email,
     name: data.name,
-    phone: data.phone,
     picture: data.picture,
     mode: data.mode,
     pro_role: data.pro_role,
@@ -151,7 +149,6 @@ router.patch("/", async (req, res) => {
   const updates = {}
   if (p.name != null) updates.name = p.name
   if (p.email != null) updates.email = p.email
-  if (p.phone != null) updates.phone = p.phone
   if (p.picture != null) updates.picture = p.picture
   if (p.mode != null) updates.mode = p.mode
   if (p.pro_role != null) updates.pro_role = p.pro_role
@@ -170,7 +167,6 @@ router.patch("/", async (req, res) => {
     id: data.id,
     email: data.email,
     name: data.name,
-    phone: data.phone,
     picture: data.picture,
     mode: data.mode,
     pro_role: data.pro_role,

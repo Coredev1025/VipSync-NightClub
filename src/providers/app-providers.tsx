@@ -22,6 +22,7 @@ import {
 import { ApiAuthContext } from "@/contexts/api-auth-context"
 import { BottlesProvider } from "@/contexts/bottles-context"
 import { ChatsProvider } from "@/contexts/chats-context"
+import { LiveFeedProvider } from "@/contexts/live-feed-context"
 import { MenuProvider } from "@/contexts/menu-context"
 import { TablesProvider } from "@/contexts/tables-context"
 import { VibeProvider } from "@/contexts/vibe-context"
@@ -172,10 +173,12 @@ export function AppProviders({ children }: AppProvidersProps) {
               <TablesProvider>
                 <ChatsProvider>
                   <VibeProvider>
-                    <ToastProvider>
-                      <AuthSyncListener setHasBackendToken={setHasBackendToken} />
-                      {children}
-                    </ToastProvider>
+                    <LiveFeedProvider>
+                      <ToastProvider>
+                        <AuthSyncListener setHasBackendToken={setHasBackendToken} />
+                        {children}
+                      </ToastProvider>
+                    </LiveFeedProvider>
                   </VibeProvider>
                 </ChatsProvider>
               </TablesProvider>

@@ -1,4 +1,4 @@
-import { Activity, Bell, CheckCircle, Home, LogOut, Map, MessageSquare, Search, Sparkles, User, X } from "lucide-react-native"
+import { Activity, CheckCircle, Home, LogOut, Map, MessageSquare, Search, User, X } from "lucide-react-native"
 import * as React from "react"
 import { Modal, Pressable, StyleSheet, Text, View, useWindowDimensions } from "react-native"
 import Animated, {
@@ -141,38 +141,6 @@ function AmbientBlobs({ theme }: { theme: ReturnType<typeof useTheme>["theme"] }
   )
 }
 
-// Reanimated pulsing dot for 60fps notification indicator
-function PulsingDot({ color, size = 10 }: { color: string; size?: number }) {
-  const scale = useSharedValue(1)
-
-  React.useEffect(() => {
-    scale.value = withRepeat(
-      withSequence(
-        withTiming(1.25, { duration: 1000 }),
-        withTiming(1, { duration: 1000 })
-      ),
-      -1,
-      false
-    )
-  }, [])
-
-  const animatedStyle = useAnimatedStyle(() => {
-    "worklet"
-    return {
-      transform: [{ scale: scale.value }],
-    }
-  }, [])
-
-  return (
-    <Animated.View
-      style={[
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
-        animatedStyle,
-      ]}
-    />
-  )
-}
-
 export interface AppShellProps {
   onLogout?: () => void
   /** Pro user role (promoter/door/manager/owner) – controls map/edit visibility (e.g. promoter vs manager/owner). */
@@ -204,10 +172,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
     guest: string
     items: string
   } | null>(null)
-  const [showNotifications, setShowNotifications] = React.useState(false)
   const [showSearch, setShowSearch] = React.useState(false)
-  // Notification count for badge dot (e.g. from API); when > 0, pink dot is shown
-  const notificationCount = 3
   const [showUserMenu, setShowUserMenu] = React.useState(false)
   const [avatarLayout, setAvatarLayout] = React.useState<{ x: number; y: number; width: number; height: number } | null>(null)
   const avatarRef = React.useRef<View>(null)
@@ -244,6 +209,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
         return (
           <ProfileTab
             proMode
+            showProStats={userRole !== "owner"}
             onLogout={onLogout}
             canManageClubSettings={userRole === "owner" || userRole === "manager"}
           />
@@ -297,20 +263,6 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
                 accessibilityLabel="Search"
               >
                 <Search size={18} color={theme.colors.foreground} />
-              </HapticPressable>
-
-              <HapticPressable
-                onPress={() => setShowNotifications((v) => !v)}
-                style={styles.notificationBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-              >
-                <Bell size={18} color="rgba(180, 180, 190, 0.75)" />
-                {notificationCount > 0 ? (
-                  <View style={styles.notificationBadge}>
-                    <PulsingDot color={theme.colors.neonPink} size={10} />
-                  </View>
-                ) : null}
               </HapticPressable>
 
               <HapticPressable
@@ -434,43 +386,6 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
                 </HapticPressable>
               </View>
             </View>
-          </Animated.View>
-        </>
-      )}
-
-      {/* Notifications overlay - rendered on top so backdrop receives outside taps */}
-      {showNotifications && (
-        <>
-          <Pressable
-            style={[StyleSheet.absoluteFill, { zIndex: 101 }]}
-            onPress={() => setShowNotifications(false)}
-            accessibilityLabel="Close notifications overlay"
-            accessibilityRole="button"
-          />
-          <Animated.View
-            entering={FadeIn.duration(200).springify()}
-            exiting={FadeOut.duration(150)}
-            style={[styles.notificationsOverlay, { top: 60, zIndex: 102 }]}
-            pointerEvents="box-none"
-          >
-            <Card variant="solid" style={[styles.overlayCard, { borderColor: theme.colors.border }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Sparkles size={16} color={theme.colors.neonPink} />
-                  <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }}>
-                    Notifications
-                  </Text>
-                </View>
-                <HapticPressable onPress={() => setShowNotifications(false)} neonBorder borderColor={`${theme.colors.neonPink}AA`} style={[styles.smallBtn, { backgroundColor: theme.colors.card }]}>
-                  <X size={16} color={theme.colors.mutedForeground} />
-                </HapticPressable>
-              </View>
-              <View style={{ marginTop: 12, gap: 10 }}>
-                <NotificationItem title="VIP Arriving" message="Marcus Chen - ETA 5 min" time="Just now" tone="pink" />
-                <NotificationItem title="Table Request" message="Table 7 needs bottle service" time="2 min ago" tone="cyan" />
-                <NotificationItem title="Capacity Alert" message="VIP Section at 85% capacity" time="10 min ago" tone="orange" />
-              </View>
-            </Card>
           </Animated.View>
         </>
       )}
@@ -650,48 +565,6 @@ function AccountModal({
   )
 }
 
-function NotificationItem({
-  title,
-  message,
-  time,
-  tone,
-}: {
-  title: string
-  message: string
-  time: string
-  tone: "pink" | "cyan" | "orange"
-}) {
-  const { theme } = useTheme()
-  const color =
-    tone === "pink"
-      ? theme.colors.neonPink
-      : tone === "cyan"
-        ? theme.colors.neonCyan
-        : theme.colors.neonOrange
-
-  return (
-    <HapticPressable
-      neonBorder
-      borderColor={`${color}AA`}
-      style={[
-        styles.notif,
-        { backgroundColor: `${color}12` },
-      ]}
-    >
-      <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start" }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-          <PulsingDot color={color} size={8} />
-          <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }}>{title}</Text>
-        </View>
-        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{time}</Text>
-      </View>
-      <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 6, marginLeft: 18 }}>
-        {message}
-      </Text>
-    </HapticPressable>
-  )
-}
-
 const styles = StyleSheet.create({
   root: {
     flex: 1,
@@ -749,22 +622,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  notificationBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 10,
-    height: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   avatarBtn: {
     alignItems: "center",
     justifyContent: "center",
@@ -786,12 +643,6 @@ const styles = StyleSheet.create({
     position: "absolute",
     left: 48,
     right: 48,
-    zIndex: 50,
-  },
-  notificationsOverlay: {
-    position: "absolute",
-    left: 16,
-    right: 16,
     zIndex: 50,
   },
   overlayCard: {
@@ -827,18 +678,6 @@ const styles = StyleSheet.create({
     borderRadius: 14,
     alignItems: "center",
     justifyContent: "center",
-  },
-  smallBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  notif: {
-    borderRadius: 16,
-    borderWidth: 1,
-    padding: 12,
   },
   navWrap: {
     position: "absolute",

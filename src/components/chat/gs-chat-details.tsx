@@ -55,7 +55,6 @@ export interface ChatOrderFromMessage {
 
 export interface ChatDetailsProps {
   contactName?: string
-  contactPhone?: string
   contactAvatar?: string
   lastSeen?: string
   onBack: () => void
@@ -84,7 +83,6 @@ function formatTime(timestamp: string): string {
 
 export function GSChatDetails({
   contactName = "Jason Holder",
-  contactPhone,
   contactAvatar = "https://i.pravatar.cc/320?u=dev@geekspark.com",
   lastSeen = "last seen today at 4:10 pm",
   onBack,
@@ -122,8 +120,8 @@ export function GSChatDetails({
   const isControlled = controlledMessages != null
   const chatData = isControlled ? controlledMessages : localChatData
 
-  const displayName = (contactName?.trim() || contactPhone || "Unknown").trim()
-  const headerSubtitle = (contactName?.trim() && contactPhone ? contactPhone : null) ?? lastSeen
+  const displayName = (contactName?.trim() || "Unknown").trim()
+  const headerSubtitle = lastSeen
   const showGeminiBlock = contactName === "Main Ops" && chatData.length >= 2
   const lastMsg = chatData[chatData.length - 1]
   const lastMsgIsOrder = lastMsg && !lastMsg.me && /table\s*\d/i.test(lastMsg.msg) && /james|collon|bottle/i.test(lastMsg.msg)

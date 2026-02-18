@@ -1,4 +1,4 @@
-import { ArrowLeft, CheckCheck, Phone, Plus, Search, Send } from "lucide-react-native"
+import { ArrowLeft, CheckCheck, Plus, Search, Send } from "lucide-react-native"
 import { AnimatePresence, MotiView } from "moti"
 import * as React from "react"
 import {
@@ -416,9 +416,7 @@ export function GuestChatTab({
                               : "Online"}
                           </Text>
                         </View>
-                        <Button size="icon" variant="ghost" accessibilityLabel="Call">
-                          <Phone size={20} color={theme.colors.foreground} />
-                        </Button>
+                        {/* Call actions removed */}
                       </>
                     )
                   })()}

@@ -170,7 +170,7 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
   if (viewState === "calling" && selectedChat) {
     return (
       <GSCalling
-        contactName={selectedChat.name?.trim() || selectedChat.phone || "Unknown"}
+        contactName={selectedChat.name?.trim() || "Unknown"}
         contactAvatar={selectedChat.img}
         onEndCall={() => {
           setViewState("chat")
@@ -197,7 +197,6 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
       <>
         <GSChatDetails
           contactName={selectedChat.name}
-          contactPhone={selectedChat.phone}
           contactAvatar={selectedChat.img}
           lastSeen="last seen today at 4:10 pm"
           messages={chatMessages}

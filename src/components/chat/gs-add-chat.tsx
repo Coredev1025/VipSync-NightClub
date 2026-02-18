@@ -208,7 +208,7 @@ function ContactLinks({
 }
 
 function getContactDisplayName(item: Contact): string {
-  return (item.name?.trim() || item.phone || "Unknown").trim()
+  return (item.name?.trim() || "Unknown").trim()
 }
 
 function ContactItem({
@@ -221,8 +221,7 @@ function ContactItem({
   styles: ReturnType<typeof getAddChatStyles>
 }) {
   const displayName = getContactDisplayName(item)
-  const showPhoneSubtitle = item.phone && item.name?.trim()
-  const showStatusSubtitle = item.status && !showPhoneSubtitle
+  const showStatusSubtitle = item.status && item.name?.trim()
 
   return (
     <Pressable onPress={onPress} style={styles.contactContainer}>
@@ -234,11 +233,7 @@ function ContactItem({
 
       <View style={{ flex: 1, marginLeft: 15 }}>
         <Text style={styles.contactUser}>{displayName}</Text>
-        {showPhoneSubtitle ? (
-          <Text style={styles.contactStatus} numberOfLines={1}>
-            {item.phone}
-          </Text>
-        ) : showStatusSubtitle ? (
+        {showStatusSubtitle ? (
           <Text style={styles.contactStatus} numberOfLines={1}>
             {item.status}
           </Text>

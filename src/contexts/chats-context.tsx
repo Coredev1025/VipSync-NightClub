@@ -53,7 +53,6 @@ const DEFAULT_CHATS: ChatItem[] = [
     id: "main-ops",
     img: "https://i.pravatar.cc/300?u=mainops",
     name: "Main Ops",
-    phone: "+1 (555) 100-2000",
     lastMsg: "Table 2, i got James he wants 2 bottles of Collon.",
     time: new Date(Date.now() - 1 * 60 * 1000).toISOString(),
     seen: false,

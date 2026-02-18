@@ -2216,7 +2216,17 @@ function EditStaffListSheet({
   placeholder: string
 }) {
   const { theme } = useTheme()
+  const [selectedValue, setSelectedValue] = React.useState(currentValue)
   const [otherName, setOtherName] = React.useState("")
+  React.useEffect(() => {
+    setSelectedValue(currentValue)
+    setOtherName("")
+  }, [currentValue])
+  const handleSave = () => {
+    const value = otherName.trim() || selectedValue || ""
+    onSelect(value)
+    onClose()
+  }
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 24, flex: 1 }}>
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
@@ -2230,14 +2240,11 @@ function EditStaffListSheet({
       </Text>
       <ScrollView style={{ maxHeight: 280 }} showsVerticalScrollIndicator={false}>
         {options.map((person) => {
-          const isSelected = person.name === currentValue
+          const isSelected = person.name === selectedValue
           return (
             <HapticPressable
               key={person.id}
-              onPress={() => {
-                onSelect(person.name)
-                onClose()
-              }}
+              onPress={() => setSelectedValue(person.name)}
               style={[
                 styles.staffListRow,
                 {
@@ -2281,19 +2288,8 @@ function EditStaffListSheet({
           style={{ color: theme.colors.foreground }}
           placeholderTextColor={theme.colors.mutedForeground}
         />
-        <Button
-          variant="solid"
-          tone="cyan"
-          style={{ marginTop: 10 }}
-          onPress={() => {
-            const name = otherName.trim()
-            if (name) {
-              onSelect(name)
-              onClose()
-            }
-          }}
-        >
-          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Save custom name</Text>
+        <Button variant="solid" tone="cyan" style={{ marginTop: 16 }} onPress={handleSave}>
+          <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Save</Text>
         </Button>
       </View>
     </View>
@@ -2639,36 +2635,6 @@ function TableDetailSheet({
         </View>
       ) : null}
 
-      {!table.isDjBooth ? (
-        <View style={{ marginTop: 10 }}>
-          <Button
-            variant="outline"
-            tone="green"
-            onPress={() => {
-              Alert.alert(
-                "Close table",
-                "Are you sure you want to close the table?",
-                [
-                  { text: "No", style: "cancel" },
-                  {
-                    text: "Yes",
-                    onPress: () => {
-                      onUpdateTable?.(table.id, { status: "open" })
-                      onClose()
-                    },
-                  },
-                ]
-              )
-            }}
-          >
-            <View style={styles.rowCenter}>
-              <CheckCircle size={18} color={theme.colors.neonGreen} />
-              <Text style={{ color: theme.colors.neonGreen, fontFamily: "Inter_600SemiBold" }}>Mark as Complete</Text>
-            </View>
-          </Button>
-        </View>
-      ) : null}
-
       <ModalSheet open={showEditPromoterSheet} onClose={() => setShowEditPromoterSheet(false)} maxHeightPct={1}>
         <EditStaffListSheet
           title="Edit promoter"
@@ -2677,6 +2643,13 @@ function TableDetailSheet({
           placeholder="Promoter name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { promoter: name || undefined })
+            liveFeed?.addFeedItem({
+              type: "alert",
+              title: "Promoter updated",
+              description: name ? `Table ${table.isDjBooth ? "DJ" : table.number}: ${name}` : `Table ${table.isDjBooth ? "DJ" : table.number} promoter cleared`,
+              time: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+              table: table.isDjBooth ? undefined : table.number,
+            })
             setShowEditPromoterSheet(false)
           }}
           onClose={() => setShowEditPromoterSheet(false)}
@@ -2690,6 +2663,13 @@ function TableDetailSheet({
           placeholder="Bottle girl name"
           onSelect={(name) => {
             onUpdateTable?.(table.id, { server: name || undefined })
+            liveFeed?.addFeedItem({
+              type: "alert",
+              title: "Bottle girl updated",
+              description: name ? `Table ${table.isDjBooth ? "DJ" : table.number}: ${name}` : `Table ${table.isDjBooth ? "DJ" : table.number} bottle girl cleared`,
+              time: new Date().toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" }),
+              table: table.isDjBooth ? undefined : table.number,
+            })
             setShowEditBottleGirlSheet(false)
           }}
           onClose={() => setShowEditBottleGirlSheet(false)}
@@ -3971,7 +3951,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
           You've made changes to the menu.
         </Text>
         <Text style={{ color: theme.colors.mutedForeground, fontSize: 14, textAlign: "center" }}>
-          Would you like to send a push notification to all active users?
+          Changes will be applied immediately.
         </Text>
         <View style={{ flexDirection: "row", gap: 12, width: "100%", marginTop: 8 }}>
           <Button
@@ -3983,31 +3963,8 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
               toast({ title: "Saved", description: "Changes saved silently." })
             }}
           >
-            <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>NO, SILENT</Text>
+            <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>OK</Text>
           </Button>
-          <HapticPressable
-            onPress={() => {
-              setShowUpdateDetectedDialog(false)
-              if (isApiConnected()) {
-                api
-                  .post("/api/push/send-all", {
-                    title: "Menu updated",
-                    body: "We've updated our menu. Check it out!",
-                  })
-                  .then(() => {
-                    toast({ title: "Notification sent", description: "Active users have been notified." })
-                  })
-                  .catch(() => {
-                    toast({ title: "Notification failed", description: "Could not send push. Try again.", variant: "destructive" })
-                  })
-              } else {
-                toast({ title: "Notification sent", description: "Active users have been notified." })
-              }
-            }}
-            style={{ flex: 1, borderWidth: 2, borderColor: theme.colors.neonCyan, borderRadius: 10, paddingVertical: 12, alignItems: "center", justifyContent: "center" }}
-          >
-            <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>YES, NOTIFY</Text>
-          </HapticPressable>
         </View>
       </View>
     </ModalCard>

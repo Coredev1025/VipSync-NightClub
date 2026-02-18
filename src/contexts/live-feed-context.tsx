@@ -66,20 +66,26 @@ export function LiveFeedProvider({ children }: { children: React.ReactNode }) {
 
   const addFeedItem = React.useCallback(
     async (item: LiveFeedItemInput) => {
-      if (!connected) return
-      if (!getAccessToken()) {
-        if (__DEV__) console.warn("[LiveFeed] addFeedItem skipped: no auth token. Sign in first.")
+      const createdAt = Date.now()
+      const optimisticItem: LiveFeedItem = {
+        id: `local-${createdAt}-${Math.random().toString(36).slice(2, 9)}`,
+        ...item,
+        createdAt,
+      }
+      // Always add to local state so Ops page shows feed following table changes
+      setFeedItems((prev) => [optimisticItem, ...prev])
+      if (!connected || !getAccessToken()) {
+        if (__DEV__) console.warn("[LiveFeed] addFeedItem: saved locally only (no API connection or token).")
         return
       }
-      const createdAt = Date.now()
       try {
         const created = await api.post<LiveFeedItem>("/api/live-feed", item)
         const newItem = normalizeFeedItem({ ...created, createdAt: created.createdAt ?? createdAt })
-        setFeedItems((prev) => [newItem, ...prev])
+        setFeedItems((prev) => prev.map((x) => (x.id === optimisticItem.id ? newItem : x)))
       } catch (e) {
         const msg = e instanceof Error ? e.message : String(e)
         if (__DEV__) console.warn("[LiveFeed] addFeedItem failed:", msg)
-        // keep state on error
+        // Item already in state (optimistic); keep it
       }
     },
     [connected, setFeedItems]

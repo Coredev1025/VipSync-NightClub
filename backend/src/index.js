@@ -14,7 +14,6 @@ import profileRoutes from "./routes/profile.js"
 import chatsRoutes from "./routes/chats.js"
 import contactsRoutes from "./routes/contacts.js"
 import opsRoutes from "./routes/ops.js"
-import pushRoutes from "./routes/push.js"
 import guestRoutes from "./routes/guest.js"
 import barLtoRoutes from "./routes/bar-lto.js"
 import mapImportRoutes from "./routes/map-import.js"
@@ -56,7 +55,6 @@ app.use("/api/profile", profileRoutes)
 app.use("/api/chats", chatsRoutes)
 app.use("/api/contacts", contactsRoutes)
 app.use("/api/ops", opsRoutes)
-app.use("/api/push", pushRoutes)
 app.use("/api/guest", guestRoutes)
 app.use("/api/bar-lto", barLtoRoutes)
 app.use("/api/map", mapImportRoutes)

@@ -3,18 +3,15 @@ import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
 import {
     ArrowLeft,
-    Bell,
     Building2,
     Camera,
     ChevronRight,
     Copy,
     Crown,
-    DollarSign,
     Gift,
     Loader2,
     LogOut,
     MapPin,
-    MessageCircle,
     Settings,
     Share2,
     Shield,
@@ -24,6 +21,8 @@ import {
     TrendingUp,
     Trophy,
     User,
+    Users,
+    Wine,
     X,
     Zap,
 } from "lucide-react-native"
@@ -86,11 +85,10 @@ const achievements: Achievement[] = [
   },
 ]
 
-type SettingsSection = "account" | "notifications" | "privacy" | "club"
+type SettingsSection = "account" | "privacy" | "club"
 
 const BASE_MENU_ITEMS: { key: SettingsSection; icon: React.ReactNode; label: string; badge?: string; color: "cyan" | "pink" | "green"; proOnly?: boolean; managerOnly?: boolean }[] = [
   { key: "account", icon: <Settings size={18} />, label: "Account Settings", color: "cyan" },
-  { key: "notifications", icon: <Bell size={18} />, label: "Notifications", color: "pink" },
   { key: "privacy", icon: <Shield size={18} />, label: "Privacy & Security", color: "green" },
   { key: "club", icon: <Building2 size={18} />, label: "Manage Club Settings", color: "cyan", proOnly: true, managerOnly: true },
 ]
@@ -98,21 +96,18 @@ const BASE_MENU_ITEMS: { key: SettingsSection; icon: React.ReactNode; label: str
 export interface ProfileTabProps {
   /** When true (pro/club staff mode), shows pro-only menu items that pass managerOnly filter */
   proMode?: boolean
+  /** When false (owner or user mode), hides table sold, revenue, level progress, and achievements. */
+  showProStats?: boolean
   /** When true (owner/manager only), shows Manage Club Settings. Door & promoter do not see it. */
   canManageClubSettings?: boolean
   onLogout?: () => void
 }
 
-export function ProfileTab({ proMode = true, canManageClubSettings = false, onLogout }: ProfileTabProps) {
+export function ProfileTab({ proMode = true, showProStats = true, canManageClubSettings = false, onLogout }: ProfileTabProps) {
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
   const { toast } = useToast()
   const [heroName, setHeroName] = React.useState<string>("")
-  const [stats, setStats] = React.useState<{
-    tablesSold: number
-    revenueAmount: number
-    rating: number
-  } | null>(null)
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState<SettingsSection>("account")
@@ -152,22 +147,35 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
     }
   }, [])
 
+  // Ops quick-stats (same as Ops tab: Total Guests, Tables Sold, Bottles Sold)
+  const [quickStats, setQuickStats] = React.useState<{
+    totalGuests: number
+    tablesSold: number
+    bottlesSold: number
+    avgStayMinutes: number
+    avgSpendPerGuest: number
+  } | null>(null)
+
   React.useEffect(() => {
     let isMounted = true
-    if (!isApiConnected()) return
+    if (!isApiConnected() || !showProStats) return
 
     api
       .get<{
+        totalGuests: number
         tablesSold: number
-        revenueAmount: number
-        rating: number
-      }>("/api/profile/stats")
+        bottlesSold: number
+        avgStayMinutes: number
+        avgSpendPerGuest: number
+      }>("/api/ops/quick-stats")
       .then((data) => {
         if (!isMounted || !data) return
-        setStats({
+        setQuickStats({
+          totalGuests: data.totalGuests ?? 0,
           tablesSold: data.tablesSold ?? 0,
-          revenueAmount: data.revenueAmount ?? 0,
-          rating: data.rating ?? 0,
+          bottlesSold: data.bottlesSold ?? 0,
+          avgStayMinutes: data.avgStayMinutes ?? 0,
+          avgSpendPerGuest: data.avgSpendPerGuest ?? 0,
         })
       })
       .catch(() => {})
@@ -175,18 +183,22 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
     return () => {
       isMounted = false
     }
-  }, [])
+  }, [showProStats])
 
-  const statsLoading = isApiConnected() && !stats
+  const statsLoading = isApiConnected() && showProStats && !quickStats
 
-  const tablesSoldValue =
-    stats && typeof stats.tablesSold === "number" ? String(stats.tablesSold) : "—"
-  const revenueValue =
-    stats && typeof stats.revenueAmount === "number"
-      ? formatNumber(stats.revenueAmount, { prefix: "$" })
+  const totalGuestsValue =
+    quickStats && typeof quickStats.totalGuests === "number"
+      ? formatNumber(quickStats.totalGuests)
       : "—"
-  const ratingValue =
-    stats && typeof stats.rating === "number" ? stats.rating.toFixed(1) : "—"
+  const tablesSoldValue =
+    quickStats && typeof quickStats.tablesSold === "number"
+      ? formatNumber(quickStats.tablesSold)
+      : "—"
+  const bottlesSoldValue =
+    quickStats && typeof quickStats.bottlesSold === "number"
+      ? formatNumber(quickStats.bottlesSold)
+      : "—"
 
   return (
     <View style={{ flex: 1 }}>
@@ -218,7 +230,7 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
 
         <View style={{ paddingHorizontal: 16, marginTop: -68 }}>
           <View style={{ flexDirection: "row", alignItems: "flex-end", gap: 14 }}>
-            <ProfileAvatar source={resolveAvatar("/images/avatars/man1.png")} fallback="JD" glow="pink" level={3} />
+            <ProfileAvatar source={resolveAvatar("/images/avatars/man1.png")} fallback="JD" glow="pink" level={showProStats ? 3 : undefined} />
             <MotiView from={{ opacity: 0, translateX: -10 }} animate={{ opacity: 1, translateX: 0 }} transition={{ delay: 200 }} style={{ flex: 1, paddingBottom: 10 }}>
               <Text
                 style={{
@@ -229,81 +241,87 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
               >
                 {heroName}
               </Text>
-              <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
-                <View style={[styles.pill, { backgroundColor: `${theme.colors.neonPink}22`, borderColor: `${theme.colors.neonPink}55` }]}>
-                  <Zap size={12} color={theme.colors.neonPink} />
-                  <Text style={{ color: "#fff", fontFamily: "Orbitron_900Black", fontSize: 12 }}>Elite Promoter</Text>
+              {showProStats ? (
+                <View style={{ flexDirection: "row", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+                  <View style={[styles.pill, { backgroundColor: `${theme.colors.neonPink}22`, borderColor: `${theme.colors.neonPink}55` }]}>
+                    <Zap size={12} color={theme.colors.neonPink} />
+                    <Text style={styles.pillText}>Elite Promoter</Text>
+                  </View>
+                  <View style={[styles.pill, { backgroundColor: `${theme.colors.neonGreen}22`, borderColor: `${theme.colors.neonGreen}55` }]}>
+                    <TrendingUp size={12} color={theme.colors.neonGreen} />
+                    <Text style={[styles.pillText, { color: theme.colors.neonGreen }]}>Top 5%</Text>
+                  </View>
                 </View>
-                <View style={[styles.pill, { backgroundColor: `${theme.colors.neonGreen}22`, borderColor: `${theme.colors.neonGreen}55` }]}>
-                  <TrendingUp size={12} color={theme.colors.neonGreen} />
-                  <Text style={{ color: theme.colors.neonGreen, fontFamily: "Orbitron_900Black", fontSize: 12 }}>Top 5%</Text>
-                </View>
-              </View>
+              ) : null}
             </MotiView>
           </View>
         </View>
       </View>
 
-      <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 140 }} style={{ paddingHorizontal: 16, marginTop: 18 }}>
-        <View style={{ flexDirection: "row", gap: 10 }}>
-          <StatCard icon={<Table size={18} color={theme.colors.neonPink} />} label="Tables Sold" value={tablesSoldValue} tone="pink" trend="+12" flex={1} />
-          <StatCard icon={<DollarSign size={18} color={theme.colors.neonGreen} />} label="Revenue" value={revenueValue} tone="green" trend="+8%" flex={1.5} />
-          <StatCard icon={<Star size={18} color={theme.colors.neonCyan} />} label="Rating" value={ratingValue} tone="cyan" flex={1} />
-        </View>
-        {statsLoading ? (
-          <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
-            <ActivityIndicator size="small" color={theme.colors.neonCyan} />
-            <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular" }}>
-              Loading your performance stats…
-            </Text>
-          </View>
-        ) : null}
-      </MotiView>
+      {showProStats ? (
+        <>
+          <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 140 }} style={{ paddingHorizontal: 16, marginTop: 18 }}>
+            <View style={{ flexDirection: "row", gap: 10 }}>
+              <StatCard icon={<Users size={18} color={theme.colors.neonCyan} />} label="Total Guests" value={totalGuestsValue} tone="cyan" flex={1} />
+              <StatCard icon={<Table size={18} color={theme.colors.neonCyan} />} label="Tables Sold" value={tablesSoldValue} tone="cyan" flex={1} />
+              <StatCard icon={<Wine size={18} color={theme.colors.neonPink} />} label="Bottles Sold" value={bottlesSoldValue} tone="pink" flex={1} />
+            </View>
+            {statsLoading ? (
+              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginTop: 10 }}>
+                <ActivityIndicator size="small" color={theme.colors.neonCyan} />
+                <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular" }}>
+                  Loading your performance stats…
+                </Text>
+              </View>
+            ) : null}
+          </MotiView>
 
-      <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 220 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
-        <Card variant="glass" style={{ padding: 16, borderColor: `${theme.colors.neonPink}55`, overflow: "hidden" }}>
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-            <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-              <Trophy size={20} color={theme.colors.neonPink} />
+          <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 220 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
+            <Card variant="glass" style={{ padding: 16, borderColor: `${theme.colors.neonPink}55`, overflow: "hidden" }}>
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
+                  <Trophy size={20} color={theme.colors.neonPink} />
+                  <Text style={{ color: theme.colors.foreground, fontSize: 16, fontFamily: "Orbitron_900Black" }}>
+                    Level Progress
+                  </Text>
+                </View>
+                <Badge tone="cyan">Level 3 → 4</Badge>
+              </View>
+
+              <View style={{ height: 12, borderRadius: 999, overflow: "hidden", backgroundColor: `${theme.colors.muted}cc`, marginTop: 4 }}>
+                <View style={{ width: "65%", height: "100%", backgroundColor: theme.colors.neonPink, borderRadius: 999 }} />
+              </View>
+
+              <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
+                <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
+                  <Text style={{ color: theme.colors.neonGreen, fontSize: 14, fontFamily: "Orbitron_900Black" }}>65</Text>
+                  <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular" }}>/ 100 XP</Text>
+                </View>
+                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular" }}>
+                  35 more tables to reach Level 4
+                </Text>
+              </View>
+            </Card>
+          </MotiView>
+
+          <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 300 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
+            <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
+              <MotiView from={{ rotate: "0deg" }} animate={{ rotate: "360deg" }} transition={{ type: "timing", duration: 8000, loop: true }}>
+                <Trophy size={18} color={theme.colors.neonOrange} />
+              </MotiView>
               <Text style={{ color: theme.colors.foreground, fontSize: 16, fontFamily: "Orbitron_900Black" }}>
-                Level Progress
+                Achievements
               </Text>
             </View>
-            <Badge tone="cyan">Level 3 → 4</Badge>
-          </View>
 
-          <View style={{ height: 12, borderRadius: 999, overflow: "hidden", backgroundColor: `${theme.colors.muted}cc`, marginTop: 4 }}>
-            <View style={{ width: "65%", height: "100%", backgroundColor: theme.colors.neonPink, borderRadius: 999 }} />
-          </View>
-
-          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginTop: 12 }}>
-            <View style={{ flexDirection: "row", alignItems: "baseline", gap: 4 }}>
-              <Text style={{ color: theme.colors.neonGreen, fontSize: 14, fontFamily: "Orbitron_900Black" }}>65</Text>
-              <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, fontFamily: "Inter_400Regular" }}>/ 100 XP</Text>
+            <View style={{ gap: 10 }}>
+              {achievements.map((a, i) => (
+                <AchievementRow key={a.id} achievement={a} index={i} />
+              ))}
             </View>
-            <Text style={{ color: theme.colors.mutedForeground, fontSize: 11, fontFamily: "Inter_400Regular" }}>
-              35 more tables to reach Level 4
-            </Text>
-          </View>
-        </Card>
-      </MotiView>
-
-      <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 300 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
-        <View style={{ flexDirection: "row", alignItems: "center", gap: 10, marginBottom: 10 }}>
-          <MotiView from={{ rotate: "0deg" }} animate={{ rotate: "360deg" }} transition={{ type: "timing", duration: 8000, loop: true }}>
-            <Trophy size={18} color={theme.colors.neonOrange} />
           </MotiView>
-          <Text style={{ color: theme.colors.foreground, fontSize: 16, fontFamily: "Orbitron_900Black" }}>
-            Achievements
-          </Text>
-        </View>
-
-        <View style={{ gap: 10 }}>
-          {achievements.map((a, i) => (
-            <AchievementRow key={a.id} achievement={a} index={i} />
-          ))}
-        </View>
-      </MotiView>
+        </>
+      ) : null}
 
       <MotiView from={{ opacity: 0, translateY: 10 }} animate={{ opacity: 1, translateY: 0 }} transition={{ delay: 360 }} style={{ paddingHorizontal: 16, marginTop: 16 }}>
         <Text style={{ color: theme.colors.foreground, fontSize: 16, fontFamily: "Orbitron_900Black", marginBottom: 10 }}>
@@ -346,7 +364,7 @@ export function ProfileTab({ proMode = true, canManageClubSettings = false, onLo
                     <Text style={{ color: "#fff", fontFamily: "Orbitron_900Black", fontSize: 11 }}>{item.badge}</Text>
                   </View>
                 ) : null}
-                {item.key !== "notifications" ? <ChevronRight size={16} color={theme.colors.mutedForeground} /> : null}
+                <ChevronRight size={16} color={theme.colors.mutedForeground} />
               </Pressable>
             </MotiView>
           ))}
@@ -458,14 +476,12 @@ interface SettingsSheetContentProps {
 
 const SETTINGS_TITLES: Record<SettingsSection, string> = {
   account: "Account Settings",
-  notifications: "Notifications",
   privacy: "Privacy & Security",
   club: "Manage Club Settings",
 }
 
 const SETTINGS_HEADER_ICONS: Record<SettingsSection, React.ReactNode> = {
   account: <Settings size={20} />,
-  notifications: <Bell size={20} />,
   privacy: <Shield size={20} />,
   club: <Building2 size={20} />,
 }
@@ -477,9 +493,7 @@ function SettingsSheetContent({ section, onClose, onBack, toast, insets }: Setti
   const iconColor =
     section === "account" || section === "club"
       ? theme.colors.neonCyan
-      : section === "notifications"
-        ? theme.colors.neonPink
-        : theme.colors.neonGreen
+      : theme.colors.neonGreen
 
   return (
     <View style={{ flex: 1, minHeight: 300, paddingBottom: insets.bottom + 16 }}>
@@ -504,7 +518,6 @@ function SettingsSheetContent({ section, onClose, onBack, toast, insets }: Setti
         keyboardShouldPersistTaps="handled"
       >
         {section === "account" && <AccountSettingsContent toast={toast} />}
-        {section === "notifications" && <NotificationsSettingsContent />}
         {section === "privacy" && <PrivacySettingsContent toast={toast} />}
         {section === "club" && <ClubSettingsContent toast={toast} />}
       </ScrollView>
@@ -515,22 +528,19 @@ function SettingsSheetContent({ section, onClose, onBack, toast, insets }: Setti
 interface AccountData {
   displayName: string
   email: string
-  phone: string
   avatarUri?: string
 }
 
 async function loadAccountSettings(): Promise<AccountData> {
   const profile = await getProfile()
   const fromApi = profile?.settings_account as Partial<AccountData> | undefined
-  if (fromApi && typeof fromApi === "object") {
-    return {
-      displayName: (fromApi.displayName as string) ?? "",
-      email: (fromApi.email as string) ?? "",
-      phone: (fromApi.phone as string) ?? "",
-      avatarUri: (fromApi.avatarUri as string) ?? "",
-    }
-  }
-  return { displayName: "", email: "", phone: "", avatarUri: "" }
+  const displayName =
+    (fromApi?.displayName as string | undefined)?.trim() ||
+    (profile?.name as string | undefined)?.trim() ||
+    ""
+  const email = (fromApi?.email as string | undefined) ?? (profile?.email as string | undefined) ?? ""
+  const avatarUri = (fromApi?.avatarUri as string | undefined) ?? ""
+  return { displayName, email, avatarUri }
 }
 
 function getInitials(name: string): string {
@@ -564,7 +574,6 @@ function AnimatedLoaderIcon() {
 function AccountSettingsContent({ toast }: { toast: (opts: { title: string; description?: string }) => void }) {
   const { theme } = useTheme()
   const [displayName, setDisplayName] = React.useState("")
-  const [phone, setPhone] = React.useState("")
   const [avatarUri, setAvatarUri] = React.useState<string>("")
   const [saving, setSaving] = React.useState(false)
 
@@ -573,7 +582,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
     loadAccountSettings().then((data) => {
       if (!isMounted) return
       setDisplayName(data.displayName)
-      setPhone(data.phone)
       setAvatarUri(data.avatarUri ?? "")
     })
     return () => { isMounted = false }
@@ -609,7 +617,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
       }
       const payload = {
         displayName: displayName.trim() || "",
-        phone: phone.trim(),
         avatarUri: finalAvatarUri,
       }
       await patchProfile({
@@ -623,7 +630,7 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
     } finally {
       setTimeout(() => setSaving(false), 3000)
     }
-  }, [displayName, phone, avatarUri, toast])
+  }, [displayName, avatarUri, toast])
 
   return (
     <View style={{ gap: 16 }}>
@@ -661,15 +668,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
           containerStyle={{ borderColor: theme.colors.border }}
         />
       </View>
-      <View style={{ gap: 8 }}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.mutedForeground }]}>Phone</Text>
-        <Input
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          containerStyle={{ borderColor: theme.colors.border }}
-        />
-      </View>
       <Button
         variant="solid"
         tone="cyan"
@@ -683,71 +681,6 @@ function AccountSettingsContent({ toast }: { toast: (opts: { title: string; desc
           <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Save changes</Text>
         )}
       </Button>
-    </View>
-  )
-}
-
-interface NotificationPrefs {
-  push: boolean
-  sms: boolean
-  sound: boolean
-}
-
-const DEFAULT_NOTIFICATION_PREFS: NotificationPrefs = { push: true, sms: false, sound: true }
-
-async function loadNotificationPrefs(): Promise<NotificationPrefs> {
-  const profile = await getProfile()
-  const fromApi = profile?.settings_notifications as Partial<NotificationPrefs> | undefined
-  if (fromApi && typeof fromApi === "object") {
-    return { ...DEFAULT_NOTIFICATION_PREFS, ...fromApi }
-  }
-  return { ...DEFAULT_NOTIFICATION_PREFS }
-}
-
-function NotificationsSettingsContent() {
-  const { theme } = useTheme()
-  const [prefs, setPrefs] = React.useState<NotificationPrefs>(DEFAULT_NOTIFICATION_PREFS)
-
-  React.useEffect(() => {
-    let isMounted = true
-    loadNotificationPrefs().then((data) => {
-      if (!isMounted) return
-      setPrefs(data)
-    })
-    return () => { isMounted = false }
-  }, [])
-
-  const update = React.useCallback(async (key: keyof NotificationPrefs, value: boolean) => {
-    const next = { ...prefs, [key]: value }
-    setPrefs(next)
-    try {
-      await patchProfile({ settings_notifications: next })
-    } catch (_) {}
-  }, [prefs])
-
-  const row = (label: string, key: keyof NotificationPrefs, icon: React.ReactNode) => (
-    <View key={key} style={[styles.settingsSwitchRow, { borderBottomColor: theme.colors.border }]}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        {icon}
-        <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 14 }}>{label}</Text>
-      </View>
-      <Switch
-        value={prefs[key]}
-        onValueChange={(v) => update(key, v)}
-        trackColor={{ false: theme.colors.muted, true: `${theme.colors.neonPink}88` }}
-        thumbColor={prefs[key] ? theme.colors.neonPink : theme.colors.mutedForeground}
-      />
-    </View>
-  )
-
-  return (
-    <View style={{ gap: 0 }}>
-      <Text style={[styles.settingsHint, { color: theme.colors.mutedForeground }]}>
-        Choose how you want to be notified.
-      </Text>
-      {row("Push notifications", "push", <Bell size={18} color={theme.colors.neonPink} />)}
-      {row("SMS notifications", "sms", <MessageCircle size={18} color={theme.colors.neonGreen} />)}
-      {row("Sound", "sound", <Zap size={18} color={theme.colors.neonOrange} />)}
     </View>
   )
 }
@@ -980,17 +913,24 @@ function StatCard({
     >
       <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center" }}>
         <View style={{ opacity: 0.95 }}>{icon}</View>
-        {trend ? <Text style={{ color: theme.colors.neonGreen, fontSize: 11, fontFamily: "Orbitron_900Black" }}>{trend}</Text> : null}
+        {trend ? (
+          <Text style={{ color: theme.colors.neonGreen, fontSize: 10, fontFamily: "Orbitron_900Black", includeFontPadding: false, lineHeight: 12 }}>
+            {trend}
+          </Text>
+        ) : null}
       </View>
       <View style={{ flexShrink: 1, minWidth: 0 }}>
-        <Text 
-          style={{ color: toneColor, fontSize: 24, fontFamily: "Orbitron_900Black", flexShrink: 0 }} 
+        <Text
+          style={{ color: toneColor, fontSize: 18, fontFamily: "Orbitron_900Black", includeFontPadding: false, lineHeight: 20 }}
           numberOfLines={1}
           minimumFontScale={0.7}
         >
           {value}
         </Text>
-        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11, fontFamily: "Orbitron_700Bold", marginTop: 4 }}>
+        <Text
+          style={{ color: theme.colors.mutedForeground, fontSize: 10, fontFamily: "Orbitron_700Bold", marginTop: 4, includeFontPadding: false, lineHeight: 12 }}
+          numberOfLines={1}
+        >
           {label}
         </Text>
       </View>
@@ -1151,12 +1091,19 @@ const styles = StyleSheet.create({
   },
   pill: {
     paddingHorizontal: 10,
-    paddingVertical: 7,
+    paddingVertical: 5,
     borderRadius: 999,
     borderWidth: 1,
     flexDirection: "row",
     alignItems: "center",
     gap: 6,
+  },
+  pillText: {
+    color: "#fff",
+    fontFamily: "Orbitron_900Black",
+    fontSize: 11,
+    includeFontPadding: false,
+    lineHeight: 13,
   },
   menuRow: {
     paddingHorizontal: 14,

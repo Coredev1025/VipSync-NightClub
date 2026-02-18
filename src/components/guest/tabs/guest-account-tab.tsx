@@ -3,7 +3,6 @@ import { Image } from "expo-image"
 import * as ImagePicker from "expo-image-picker"
 import {
     ArrowLeft,
-    Bell,
     ChevronRight,
     Copy,
     Gift,
@@ -35,30 +34,18 @@ import { images, resolveAvatar } from "@/lib/assets"
 import { getProfile, patchProfile } from "@/lib/profile-sync"
 import { useTheme } from "@/theme/theme-provider"
 
-type GuestSettingsSection = "account" | "notifications" | "privacy" | "help"
+type GuestSettingsSection = "account" | "privacy" | "help"
 
 interface GuestAccountData {
   displayName: string
   email: string
-  phone: string
   avatarUri?: string
 }
 
 const DEFAULT_GUEST_ACCOUNT: GuestAccountData = {
   displayName: "Guest User",
   email: "",
-  phone: "",
   avatarUri: "",
-}
-
-interface GuestNotificationPrefs {
-  push: boolean
-  sound: boolean
-}
-
-const DEFAULT_GUEST_NOTIFICATIONS: GuestNotificationPrefs = {
-  push: true,
-  sound: true,
 }
 
 interface GuestPrivacyPrefs {
@@ -74,7 +61,6 @@ const menuItems: Array<{
   color: "cyan" | "pink" | "green" | "orange"
 }> = [
   { key: "account", icon: <Settings size={18} />, label: "Account Settings", color: "cyan" },
-  { key: "notifications", icon: <Bell size={18} />, label: "Notifications", color: "pink" },
   { key: "privacy", icon: <Shield size={18} />, label: "Privacy & Security", color: "green" },
   { key: "help", icon: <HelpCircle size={18} />, label: "Help & Support", color: "orange" },
 ]
@@ -412,14 +398,12 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
 
 const SECTION_TITLES: Record<GuestSettingsSection, string> = {
   account: "Account Settings",
-  notifications: "Notifications",
   privacy: "Privacy & Security",
   help: "Help & Support",
 }
 
 const SECTION_HEADER_ICONS: Record<GuestSettingsSection, React.ReactNode> = {
   account: <Settings size={20} />,
-  notifications: <Bell size={20} />,
   privacy: <Shield size={20} />,
   help: <HelpCircle size={20} />,
 }
@@ -443,11 +427,9 @@ function GuestSettingsSheetContent({
   const iconColor =
     section === "account"
       ? theme.colors.neonCyan
-      : section === "notifications"
-        ? theme.colors.neonPink
-        : section === "privacy"
-          ? theme.colors.neonGreen
-          : theme.colors.neonOrange
+      : section === "privacy"
+        ? theme.colors.neonGreen
+        : theme.colors.neonOrange
 
   return (
     <View style={{ flex: 1, minHeight: 300, paddingBottom: insets.bottom + 16 }}>
@@ -484,7 +466,6 @@ function GuestSettingsSheetContent({
         keyboardShouldPersistTaps="handled"
       >
         {section === "account" && <GuestAccountSettingsContent toast={toast} />}
-        {section === "notifications" && <GuestNotificationsContent />}
         {section === "privacy" && <GuestPrivacyContent toast={toast} />}
         {section === "help" && <GuestHelpContent />}
       </ScrollView>
@@ -499,7 +480,6 @@ async function loadGuestAccount(): Promise<GuestAccountData> {
     return {
       displayName: (fromApi.displayName as string) ?? DEFAULT_GUEST_ACCOUNT.displayName,
       email: (fromApi.email as string) ?? "",
-      phone: (fromApi.phone as string) ?? "",
       avatarUri: (fromApi.avatarUri as string) ?? "",
     }
   }
@@ -513,7 +493,6 @@ function GuestAccountSettingsContent({
 }) {
   const { theme } = useTheme()
   const [displayName, setDisplayName] = React.useState(DEFAULT_GUEST_ACCOUNT.displayName)
-  const [phone, setPhone] = React.useState(DEFAULT_GUEST_ACCOUNT.phone)
   const [avatarUri, setAvatarUri] = React.useState<string>(DEFAULT_GUEST_ACCOUNT.avatarUri ?? "")
   const [saving, setSaving] = React.useState(false)
 
@@ -522,7 +501,6 @@ function GuestAccountSettingsContent({
     loadGuestAccount().then((data) => {
       if (!isMounted) return
       setDisplayName(data.displayName)
-      setPhone(data.phone ?? "")
       setAvatarUri(data.avatarUri ?? "")
     })
     return () => {
@@ -553,7 +531,6 @@ function GuestAccountSettingsContent({
     setSaving(true)
     const payload = {
       displayName: displayName.trim() || "Guest User",
-      phone: phone.trim(),
       avatarUri: avatarUri.trim(),
     }
     try {
@@ -564,7 +541,7 @@ function GuestAccountSettingsContent({
     } finally {
       setTimeout(() => setSaving(false), 3000)
     }
-  }, [displayName, phone, avatarUri, toast])
+  }, [displayName, avatarUri, toast])
 
   return (
     <View style={{ gap: 16 }}>
@@ -607,15 +584,6 @@ function GuestAccountSettingsContent({
           containerStyle={{ borderColor: theme.colors.border }}
         />
       </View>
-      <View style={{ gap: 8 }}>
-        <Text style={[styles.settingsLabel, { color: theme.colors.mutedForeground }]}>Phone</Text>
-        <Input
-          value={phone}
-          onChangeText={setPhone}
-          keyboardType="phone-pad"
-          containerStyle={{ borderColor: theme.colors.border }}
-        />
-      </View>
       <Button
         variant="solid"
         tone="cyan"
@@ -629,70 +597,6 @@ function GuestAccountSettingsContent({
           <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold", fontSize: 14 }}>Save changes</Text>
         )}
       </Button>
-    </View>
-  )
-}
-
-async function loadGuestNotificationPrefs(): Promise<GuestNotificationPrefs> {
-  const profile = await getProfile()
-  const fromApi = profile?.settings_notifications as Partial<GuestNotificationPrefs> | undefined
-  if (fromApi && typeof fromApi === "object") {
-    return { ...DEFAULT_GUEST_NOTIFICATIONS, ...fromApi }
-  }
-  return { ...DEFAULT_GUEST_NOTIFICATIONS }
-}
-
-function GuestNotificationsContent() {
-  const { theme } = useTheme()
-  const [prefs, setPrefs] = React.useState<GuestNotificationPrefs>(DEFAULT_GUEST_NOTIFICATIONS)
-
-  React.useEffect(() => {
-    let isMounted = true
-    loadGuestNotificationPrefs().then((data) => {
-      if (!isMounted) return
-      setPrefs(data)
-    })
-    return () => {
-      isMounted = false
-    }
-  }, [])
-
-  const update = React.useCallback(async (key: keyof GuestNotificationPrefs, value: boolean) => {
-    const next = { ...prefs, [key]: value }
-    setPrefs(next)
-    try {
-      await patchProfile({ settings_notifications: next })
-    } catch (_) {}
-  }, [prefs])
-
-  const row = (
-    label: string,
-    key: keyof GuestNotificationPrefs,
-    icon: React.ReactNode
-  ) => (
-    <View key={key} style={[styles.settingsSwitchRow, { borderBottomColor: theme.colors.border }]}>
-      <View style={{ flexDirection: "row", alignItems: "center", gap: 12 }}>
-        {icon}
-        <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 14 }}>
-          {label}
-        </Text>
-      </View>
-      <Switch
-        value={prefs[key]}
-        onValueChange={(v) => update(key, v)}
-        trackColor={{ false: theme.colors.muted, true: `${theme.colors.neonPink}88` }}
-        thumbColor={prefs[key] ? theme.colors.neonPink : theme.colors.mutedForeground}
-      />
-    </View>
-  )
-
-  return (
-    <View style={{ gap: 0 }}>
-      <Text style={[styles.settingsHint, { color: theme.colors.mutedForeground }]}>
-        Choose how you want to be notified.
-      </Text>
-      {row("Push notifications", "push", <Bell size={18} color={theme.colors.neonPink} />)}
-      {row("Sound", "sound", <Zap size={18} color={theme.colors.neonOrange} />)}
     </View>
   )
 }

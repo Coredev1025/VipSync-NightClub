@@ -65,7 +65,7 @@ router.get("/quick-stats", requireOps, async (_req, res) => {
 
   const { data: tables, error: tablesError } = await supabase
     .from("map_tables")
-    .select("status, current_guests, spend, created_at")
+    .select("status, current_guests, spend, pending_spend, created_at")
     .eq("venue_id", VENUE_ID)
 
   if (tablesError) {
@@ -88,9 +88,13 @@ router.get("/quick-stats", requireOps, async (_req, res) => {
       typeof row.spend === "number" && !Number.isNaN(Number(row.spend))
         ? Number(row.spend)
         : 0
+    const pending =
+      typeof row.pending_spend === "number" && !Number.isNaN(Number(row.pending_spend))
+        ? Number(row.pending_spend)
+        : 0
 
     totalGuests += guests
-    totalSpend += spend
+    totalSpend += spend + pending
 
     if (row.status === "occupied" || row.status === "booked") {
       occupiedCount += 1

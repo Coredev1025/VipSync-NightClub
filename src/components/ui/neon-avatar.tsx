@@ -218,13 +218,15 @@ const styles = StyleSheet.create({
     right: -6,
     bottom: -10,
     paddingHorizontal: 10,
-    paddingVertical: 6,
+    paddingVertical: 5,
     borderRadius: 999,
   },
   levelText: {
     color: "#fff",
     fontSize: 10,
     fontFamily: "Orbitron_800ExtraBold",
+    includeFontPadding: false,
+    lineHeight: 12,
   },
 })
 

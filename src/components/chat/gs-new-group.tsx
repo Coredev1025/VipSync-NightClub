@@ -162,27 +162,6 @@ export function GSNewGroup({
   const [selectedContacts, setSelectedContacts] = React.useState<Contact[]>([])
   const [searchQuery, setSearchQuery] = React.useState("")
 
-  const defaultContacts: Contact[] = [
-    { id: 1, name: "John Doe", avatar: "https://i.pravatar.cc/300?u=jdoe@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 2, name: "Jason Smith", avatar: "https://i.pravatar.cc/301?u=jason@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 3, name: "Jimmy Nerd", avatar: "https://i.pravatar.cc/302?u=jimmy@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 4, name: "Gerald", avatar: "https://i.pravatar.cc/303?u=gerald@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 5, name: "John Snow", avatar: "https://i.pravatar.cc/304?u=jsnow@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 6, name: "Denarys", avatar: "https://i.pravatar.cc/305?u=denarys@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 7, name: "Jamie Lannister", avatar: "https://i.pravatar.cc/306?u=jamie@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 8, name: "Jonathan", avatar: "https://i.pravatar.cc/307?u=jhonny@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 9, name: "David", avatar: "https://i.pravatar.cc/308?u=david@geekspark.com", status: "ChatApp is best!!!" },
-    { id: 10, name: "John Mooris", avatar: "https://i.pravatar.cc/309?u=jmor@geekspark.com", status: "ChatApp is best!!!" },
-  ]
-
-  const contactList = contacts.length > 0 ? contacts : defaultContacts
-
-  const filteredContacts = contactList.filter(
-    (contact) =>
-      contact.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      contact.status?.toLowerCase().includes(searchQuery.toLowerCase())
-  )
-
   const handleContactSelect = (contact: Contact) => {
     if (selectedContacts.find((c) => c.id === contact.id)) {
       // Already selected, remove it
@@ -266,7 +245,7 @@ export function GSNewGroup({
       <View style={{ paddingHorizontal: 15, flex: 1 }}>
         <FlatList
           showsVerticalScrollIndicator={false}
-          data={filteredContacts}
+          data={contacts}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item }) => (
             <ContactItem

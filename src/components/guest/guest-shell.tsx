@@ -1,4 +1,4 @@
-import { Bell, CheckCircle, LogOut, Map, MessageSquare, Search, Sparkles, User, X } from "lucide-react-native"
+import { CheckCircle, LogOut, Map, MessageSquare, Search, Sparkles, User, X } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
 import { Pressable, StyleSheet, Text, View } from "react-native"
@@ -37,38 +37,6 @@ const tabs = [
   { id: "map" as const, label: "Map", icon: Map },
   { id: "account" as const, label: "Me", icon: User },
 ]
-
-// Reanimated pulsing dot for 60fps notification indicator (same as pro mode)
-function PulsingDot({ color, size = 10 }: { color: string; size?: number }) {
-  const scale = useSharedValue(1)
-
-  React.useEffect(() => {
-    scale.value = withRepeat(
-      withSequence(
-        withTiming(1.25, { duration: 1000 }),
-        withTiming(1, { duration: 1000 })
-      ),
-      -1,
-      false
-    )
-  }, [])
-
-  const animatedStyle = useAnimatedStyle(() => {
-    "worklet"
-    return {
-      transform: [{ scale: scale.value }],
-    }
-  }, [])
-
-  return (
-    <Animated.View
-      style={[
-        { width: size, height: size, borderRadius: size / 2, backgroundColor: color },
-        animatedStyle,
-      ]}
-    />
-  )
-}
 
 // Tab button with width spacing like pro mode (70 inactive / 100 active)
 function GuestTabButton({
@@ -165,11 +133,8 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
   const { horizontalPadding } = useResponsive()
 
   const [activeTab, setActiveTab] = React.useState<GuestTabId>("home")
-  const [showNotifications, setShowNotifications] = React.useState(false)
   const [showSearch, setShowSearch] = React.useState(false)
   const [showGuestMenu, setShowGuestMenu] = React.useState(false)
-  // Notification count for badge dot (e.g. from API); when > 0, pink dot is shown
-  const notificationCount = 0
   const avatarRef = React.useRef<View>(null)
 
   const openGuestMenu = React.useCallback(() => {
@@ -258,20 +223,6 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
                 accessibilityLabel="Search"
               >
                 <Search size={18} color={theme.colors.foreground} />
-              </HapticPressable>
-
-              <HapticPressable
-                onPress={() => setShowNotifications((v) => !v)}
-                style={styles.notificationBtn}
-                accessibilityRole="button"
-                accessibilityLabel="Notifications"
-              >
-                <Bell size={18} color="rgba(180, 180, 190, 0.75)" />
-                {notificationCount > 0 ? (
-                  <View style={styles.notificationBadge}>
-                    <PulsingDot color={theme.colors.neonPink} size={10} />
-                  </View>
-                ) : null}
               </HapticPressable>
 
               <View ref={avatarRef}>
@@ -456,43 +407,6 @@ export function GuestShell({ onLogout }: GuestShellProps = {}) {
           </Animated.View>
         </>
       )}
-
-      {/* Notifications overlay - same style as pro mode */}
-      {showNotifications && (
-        <>
-          <Pressable
-            style={[StyleSheet.absoluteFill, { zIndex: 101 }]}
-            onPress={() => setShowNotifications(false)}
-            accessibilityLabel="Close notifications overlay"
-            accessibilityRole="button"
-          />
-          <Animated.View
-            entering={FadeIn.duration(200).springify()}
-            exiting={FadeOut.duration(150)}
-            style={[styles.notificationsOverlay, { top: 60, zIndex: 102 }]}
-            pointerEvents="box-none"
-          >
-            <Card variant="solid" style={[styles.overlayCard, { borderColor: theme.colors.border }]}>
-              <View style={{ flexDirection: "row", alignItems: "center", justifyContent: "space-between" }}>
-                <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
-                  <Sparkles size={16} color={theme.colors.neonPink} />
-                  <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }}>
-                    Notifications
-                  </Text>
-                </View>
-                <HapticPressable onPress={() => setShowNotifications(false)} neonBorder borderColor={`${theme.colors.neonPink}AA`} style={[styles.smallBtn, { backgroundColor: theme.colors.card }]}>
-                  <X size={16} color={theme.colors.mutedForeground} />
-                </HapticPressable>
-              </View>
-              <View style={{ marginTop: 12 }}>
-                <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-                  No notifications right now.
-                </Text>
-              </View>
-            </Card>
-          </Animated.View>
-        </>
-      )}
     </View>
   )
 }
@@ -544,22 +458,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  notificationBtn: {
-    width: 40,
-    height: 40,
-    alignItems: "center",
-    justifyContent: "center",
-    position: "relative",
-  },
-  notificationBadge: {
-    position: "absolute",
-    top: 6,
-    right: 6,
-    width: 10,
-    height: 10,
-    alignItems: "center",
-    justifyContent: "center",
-  },
   avatarBtn: {
     alignItems: "center",
     justifyContent: "center",
@@ -570,12 +468,6 @@ const styles = StyleSheet.create({
     padding: 2,
   },
   searchOverlay: {
-    position: "absolute",
-    left: 16,
-    right: 16,
-    zIndex: 50,
-  },
-  notificationsOverlay: {
     position: "absolute",
     left: 16,
     right: 16,
@@ -612,13 +504,6 @@ const styles = StyleSheet.create({
     width: 28,
     height: 28,
     borderRadius: 14,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  smallBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 12,
     alignItems: "center",
     justifyContent: "center",
   },

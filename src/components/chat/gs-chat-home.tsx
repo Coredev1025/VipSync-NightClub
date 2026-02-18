@@ -116,13 +116,12 @@ export function GSChatHome({
     return data.filter(
       (item) =>
         item.name.toLowerCase().includes(query) ||
-        (item.phone?.toLowerCase().includes(query) ?? false) ||
         item.lastMsg.toLowerCase().includes(query)
     )
   }, [active, searchQuery, chatData, groupData, unreadData])
 
   function getChatDisplayName(item: ChatItem): string {
-    return (item.name?.trim() || item.phone || "Unknown").trim()
+    return (item.name?.trim() || "Unknown").trim()
   }
 
   const getStyles = (mode: string | null | undefined) => {
@@ -328,7 +327,6 @@ function ChatItem({
   styles: ChatHomeStyles
 }) {
   const { theme } = useTheme()
-  const showPhoneSubtitle = item.phone && item.name?.trim() && item.phone !== displayName
   const hasLastMsg = Boolean(item.lastMsg?.trim())
 
   return (
@@ -344,13 +342,8 @@ function ChatItem({
       <View style={styles.chatMessageHolder}>
         <View style={{ flex: 1 }}>
           <Text style={styles.chatUsername}>{displayName}</Text>
-          {showPhoneSubtitle ? (
-            <Text style={[styles.chatMessage, { marginTop: 2 }]} numberOfLines={1}>
-              {item.phone}
-            </Text>
-          ) : null}
           {hasLastMsg ? (
-            <View style={{ flexDirection: "row", alignItems: "center", marginTop: showPhoneSubtitle ? 2 : 0 }}>
+            <View style={{ flexDirection: "row", alignItems: "center" }}>
               <CheckCheck size={14} color={theme.colors.mutedForeground} />
               <Text style={[styles.chatMessage, { marginLeft: 2 }]} numberOfLines={1}>
                 {ellipString(item.lastMsg, 30)}
