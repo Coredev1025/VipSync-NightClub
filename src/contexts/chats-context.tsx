@@ -1,6 +1,7 @@
 import * as React from "react"
 import { useApiAuth } from "@/contexts/api-auth-context"
 import { api, getAccessToken, isApiConnected } from "@/lib/api"
+import { isSupabaseConfigured, supabase } from "@/lib/supabase"
 
 export interface ChatItem {
   id: string
@@ -64,16 +65,26 @@ const DEFAULT_CHATS: ChatItem[] = [
 export type ChatUpdate = Partial<Pick<ChatItem, "name" | "img" | "phone" | "group">>
 export type ChatMessageUpdate = Partial<Pick<ChatMessageItem, "msg" | "me" | "sender" | "role">>
 
+export interface FetchMessagesOptions {
+  limit?: number
+  offset?: number
+  append?: boolean
+}
+
 interface ChatsContextValue {
   chats: ChatItem[]
   getMessages: (chatId: string) => ChatMessageItem[]
-  fetchMessages: (chatId: string) => Promise<ChatMessageItem[]>
+  getMessagesTotal: (chatId: string) => number
+  hasMoreMessages: (chatId: string) => boolean
+  fetchMessages: (chatId: string, options?: FetchMessagesOptions) => Promise<ChatMessageItem[]>
+  loadMoreMessages: (chatId: string) => Promise<ChatMessageItem[]>
   sendMessage: (chatId: string, msg: string, options?: { me?: boolean; sender?: string; role?: string }) => Promise<ChatMessageItem | null>
-  createChat: (data: { name: string; avatar?: string; phone?: string; isGroup?: boolean }) => Promise<ChatItem | null>
+  createChat: (data: { name: string; avatar?: string; phone?: string; isGroup?: boolean; memberIds?: string[] }) => Promise<ChatItem | null>
   updateChat: (chatId: string, patch: ChatUpdate) => Promise<void>
   deleteChat: (chatId: string) => Promise<void>
   updateMessage: (chatId: string, messageId: string, patch: ChatMessageUpdate) => Promise<void>
   deleteMessage: (chatId: string, messageId: string) => Promise<void>
+  markChatRead: (chatId: string) => Promise<void>
   refetchChats: () => Promise<void>
   isApiConnected: boolean
   isLoadingChats: boolean
@@ -81,12 +92,26 @@ interface ChatsContextValue {
 
 const ChatsContext = React.createContext<ChatsContextValue | null>(null)
 
+const MESSAGES_PAGE_SIZE = 50
+
 export function ChatsProvider({ children }: { children: React.ReactNode }) {
   const connected = isApiConnected()
   const { hasBackendToken } = useApiAuth()
+  const currentUserIdRef = React.useRef<string | null>(null)
   const [chats, setChats] = React.useState<ChatItem[]>(() => (connected ? [] : DEFAULT_CHATS))
   const [messagesByChatId, setMessagesByChatId] = React.useState<Record<string, ChatMessageItem[]>>({})
+  const [totalByChatId, setTotalByChatId] = React.useState<Record<string, number>>({})
   const [isLoadingChats, setIsLoadingChats] = React.useState(connected)
+
+  // Keep current user id for realtime message "me" flag (avoids useSupabaseAuth dependency).
+  // Rely only on onAuthStateChange to avoid extra getSession() and auth-token lock contention.
+  React.useEffect(() => {
+    if (!isSupabaseConfigured()) return
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+      currentUserIdRef.current = session?.user?.id ?? null
+    })
+    return () => subscription.unsubscribe()
+  }, [])
 
   const refetchChats = React.useCallback(async () => {
     if (!connected) return
@@ -110,18 +135,79 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     if (connected && hasBackendToken) refetchChats()
   }, [connected, hasBackendToken, refetchChats])
 
+  // Realtime: new messages for chats the user is in
+  React.useEffect(() => {
+    if (!connected || chats.length === 0 || !isSupabaseConfigured()) return
+    const chatIds = new Set(chats.map((c) => c.id))
+    const channel = supabase
+      .channel("chat_messages_realtime")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_messages" },
+        (payload) => {
+          const row = payload.new as { id: string; chat_id: string; msg: string; created_at: string; sender_id?: string; sender?: string; role?: string }
+          if (!chatIds.has(row.chat_id)) return
+          const userId = currentUserIdRef.current
+          const me = userId != null && row.sender_id != null ? row.sender_id === userId : (row as { me?: boolean }).me ?? false
+          const item = apiMessageToItem({
+            id: row.id,
+            msg: row.msg,
+            time: row.created_at,
+            me,
+            sender: row.sender,
+            role: row.role,
+          })
+          setMessagesByChatId((prev) => ({
+            ...prev,
+            [row.chat_id]: [...(prev[row.chat_id] ?? []), item],
+          }))
+          refetchChats()
+        }
+      )
+      .subscribe()
+    return () => {
+      supabase.removeChannel(channel)
+    }
+  }, [connected, chats, refetchChats])
+
   const getMessages = React.useCallback(
     (chatId: string): ChatMessageItem[] => messagesByChatId[chatId] ?? [],
     [messagesByChatId]
   )
 
+  const getMessagesTotal = React.useCallback(
+    (chatId: string): number => totalByChatId[chatId] ?? 0,
+    [totalByChatId]
+  )
+
+  const hasMoreMessages = React.useCallback(
+    (chatId: string): boolean => {
+      const list = messagesByChatId[chatId] ?? []
+      const total = totalByChatId[chatId] ?? 0
+      return list.length < total
+    },
+    [messagesByChatId, totalByChatId]
+  )
+
   const fetchMessages = React.useCallback(
-    async (chatId: string): Promise<ChatMessageItem[]> => {
+    async (chatId: string, options?: FetchMessagesOptions): Promise<ChatMessageItem[]> => {
+      const limit = options?.limit ?? MESSAGES_PAGE_SIZE
+      const offset = options?.offset ?? 0
+      const append = options?.append ?? false
       if (connected) {
         try {
-          const res = await api.get<{ messages: Array<Record<string, unknown>> }>(`/api/chats/${chatId}/messages`)
+          const res = await api.get<{ messages: Array<Record<string, unknown>>; total: number }>(
+            `/api/chats/${chatId}/messages`,
+            { params: { limit, offset } }
+          )
           const list = (res?.messages ?? []).map((m) => apiMessageToItem(m))
-          setMessagesByChatId((prev) => ({ ...prev, [chatId]: list }))
+          const total = res?.total ?? list.length
+          setTotalByChatId((prev) => ({ ...prev, [chatId]: total }))
+          setMessagesByChatId((prev) => {
+            const existing = prev[chatId] ?? []
+            const next = append ? [...list, ...existing] : list
+            return { ...prev, [chatId]: next }
+          })
           return list
         } catch {
           return getMessages(chatId)
@@ -130,6 +216,14 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       return getMessages(chatId)
     },
     [connected, getMessages]
+  )
+
+  const loadMoreMessages = React.useCallback(
+    async (chatId: string): Promise<ChatMessageItem[]> => {
+      const current = messagesByChatId[chatId] ?? []
+      return fetchMessages(chatId, { limit: MESSAGES_PAGE_SIZE, offset: current.length, append: true })
+    },
+    [fetchMessages, messagesByChatId]
   )
 
   const sendMessage = React.useCallback(
@@ -143,7 +237,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
             sender: options?.sender,
             role: options?.role,
           })
-          const item = apiMessageToItem(created as Record<string, unknown>)
+          const item = apiMessageToItem(created as unknown as Record<string, unknown>)
           setMessagesByChatId((prev) => ({ ...prev, [chatId]: [...(prev[chatId] ?? []), item] }))
           return item
         } catch {
@@ -164,8 +258,27 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     [connected]
   )
 
+  const markChatRead = React.useCallback(
+    async (chatId: string) => {
+      if (!connected) return
+      try {
+        await api.post(`/api/chats/${chatId}/read`)
+        await refetchChats()
+      } catch {
+        // ignore
+      }
+    },
+    [connected, refetchChats]
+  )
+
   const createChat = React.useCallback(
-    async (data: { name: string; avatar?: string; phone?: string; isGroup?: boolean }): Promise<ChatItem | null> => {
+    async (data: {
+      name: string
+      avatar?: string
+      phone?: string
+      isGroup?: boolean
+      memberIds?: string[]
+    }): Promise<ChatItem | null> => {
       if (connected) {
         try {
           const res = await api.post<Record<string, unknown>>("/api/chats", {
@@ -173,6 +286,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
             avatar: data.avatar,
             phone: data.phone,
             isGroup: data.isGroup ?? false,
+            memberIds: data.memberIds,
           })
           const item = apiChatToItem({ ...res, lastMessage: "", time: new Date().toISOString(), unread: 0, seen: true })
           setChats((prev) => [item, ...prev])
@@ -250,7 +364,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
           const updated = await api.patch<ChatMessageItem>(`/api/chats/${chatId}/messages/${messageId}`, patch)
           setMessagesByChatId((prev) => ({
             ...prev,
-            [chatId]: (prev[chatId] ?? []).map((m) => (m.id === messageId ? apiMessageToItem(updated as Record<string, unknown>) : m)),
+            [chatId]: (prev[chatId] ?? []).map((m) => (m.id === messageId ? apiMessageToItem(updated as unknown as Record<string, unknown>) : m)),
           }))
         } catch {
           setMessagesByChatId((prev) => ({
@@ -284,18 +398,39 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     () => ({
       chats,
       getMessages,
+      getMessagesTotal,
+      hasMoreMessages,
       fetchMessages,
+      loadMoreMessages,
       sendMessage,
       createChat,
       updateChat,
       deleteChat,
       updateMessage,
       deleteMessage,
+      markChatRead,
       refetchChats,
       isApiConnected: connected,
       isLoadingChats,
     }),
-    [chats, getMessages, fetchMessages, sendMessage, createChat, updateChat, deleteChat, updateMessage, deleteMessage, refetchChats, connected, isLoadingChats]
+    [
+      chats,
+      getMessages,
+      getMessagesTotal,
+      hasMoreMessages,
+      fetchMessages,
+      loadMoreMessages,
+      sendMessage,
+      createChat,
+      updateChat,
+      deleteChat,
+      updateMessage,
+      deleteMessage,
+      markChatRead,
+      refetchChats,
+      connected,
+      isLoadingChats,
+    ]
   )
 
   return <ChatsContext.Provider value={value}>{children}</ChatsContext.Provider>

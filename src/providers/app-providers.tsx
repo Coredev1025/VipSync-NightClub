@@ -36,14 +36,17 @@ export interface AppProvidersProps {
   children: React.ReactNode
 }
 
+const TOKEN_REFRESH_SYNC_THROTTLE_MS = 5 * 60 * 1000 // Sync at most once per 5 min on TOKEN_REFRESHED
+
 function AuthSyncListener({
   setHasBackendToken,
 }: {
   setHasBackendToken: React.Dispatch<React.SetStateAction<boolean>>
 }) {
   const { toast } = useToast()
+  const lastTokenRefreshSyncRef = React.useRef<number>(0)
 
-  // Listen for auth state changes and sync with backend.
+  // Listen for auth state changes and sync with backend. Only sync on SIGNED_IN or throttled TOKEN_REFRESHED to avoid request storms.
   React.useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
@@ -55,7 +58,13 @@ function AuthSyncListener({
           return
         }
 
-        // SIGNED_IN or TOKEN_REFRESHED: sync with backend when we have a session
+        if (event === "TOKEN_REFRESHED") {
+          const now = Date.now()
+          if (now - lastTokenRefreshSyncRef.current < TOKEN_REFRESH_SYNC_THROTTLE_MS) return
+          lastTokenRefreshSyncRef.current = now
+        }
+
+        // SIGNED_IN or (throttled) TOKEN_REFRESHED: sync with backend when we have a session
         if ((event === "SIGNED_IN" || event === "TOKEN_REFRESHED") && session) {
           if (!isApiConnected()) {
             if (__DEV__) console.warn("[Auth] Backend JWT skipped: no API URL. Set EXPO_PUBLIC_API_URL in .env.")
@@ -105,6 +114,7 @@ function AuthSyncListener({
           setHasBackendToken(false)
           return
         }
+        lastTokenRefreshSyncRef.current = Date.now()
         syncBackendSession(session).then((error) => {
           if (error) {
             setAccessToken(null)

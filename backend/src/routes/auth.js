@@ -78,29 +78,46 @@ router.post("/supabase", async (req, res) => {
   const email = decoded.email ?? userMeta.email ?? undefined
   const name = decoded.name ?? userMeta.name ?? userMeta.full_name ?? undefined
   const picture = decoded.picture ?? userMeta.picture ?? userMeta.avatar_url ?? userMeta.image ?? undefined
+  // Supabase JWT sub is auth.users.id (UUID). The trigger creates profile with id = Google sub, auth_id = UUID.
+  // Look up by auth_id first so we update the same profile and never create a duplicate for the same Gmail.
   console.log("[Auth] Token verified for user:", decoded.sub, "email:", email ?? "(none)")
-  const { data: existing } = await supabase
+  let existing = null
+  const { data: byAuthId } = await supabase
     .from("profiles")
-    .select("id, mode, pro_role")
-    .eq("id", decoded.sub)
-    .single()
+    .select("id, auth_id, mode, pro_role")
+    .eq("auth_id", decoded.sub)
+    .maybeSingle()
+  if (byAuthId) {
+    existing = byAuthId
+  } else {
+    const { data: byId } = await supabase
+      .from("profiles")
+      .select("id, auth_id, mode, pro_role")
+      .eq("id", decoded.sub)
+      .maybeSingle()
+    existing = byId
+  }
 
-  const mode = (bodyMode ?? existing?.mode) ?? "pro"
-  const proRole = (bodyProRoleResolved ?? existing?.pro_role) ?? "promoter"
+  const profileId = existing?.id ?? decoded.sub
+
+  // New users: leave mode/pro_role null so app shows onboarding (mode → role → profile).
+  // Existing users: keep current or use body.
+  const mode = bodyMode ?? existing?.mode ?? (existing ? undefined : null)
+  const proRole = bodyProRoleResolved ?? existing?.pro_role ?? (existing ? undefined : null)
 
   const profileRow = {
     email,
     name,
     picture,
-    mode,
-    pro_role: proRole,
+    mode: mode ?? null,
+    pro_role: proRole ?? null,
     updated_at: new Date().toISOString(),
   }
   if (existing) {
     const { error: updateErr } = await supabase
       .from("profiles")
       .update(profileRow)
-      .eq("id", decoded.sub)
+      .eq("id", profileId)
     if (updateErr) {
       console.warn("[Auth] Profile update failed:", updateErr.message)
       res.status(500).json({ error: "Profile update failed", hint: updateErr.message })
@@ -108,7 +125,8 @@ router.post("/supabase", async (req, res) => {
     }
   } else {
     const { error: insertErr } = await supabase.from("profiles").insert({
-      id: decoded.sub,
+      id: profileId,
+      auth_id: decoded.sub,
       ...profileRow,
     })
     if (insertErr) {
@@ -118,7 +136,7 @@ router.post("/supabase", async (req, res) => {
     }
   }
   const jwtPayload = {
-    sub: decoded.sub,
+    sub: profileId,
     email,
     name,
     picture,
@@ -126,8 +144,8 @@ router.post("/supabase", async (req, res) => {
     proRole,
   }
   const backendToken = signToken(jwtPayload)
-  console.log("[Auth] Google sign-in successful — user:", decoded.sub, "email:", email ?? "(none)", "mode:", mode)
-  res.json({ user: { id: decoded.sub, email, name, picture, mode, proRole }, accessToken: backendToken })
+  console.log("[Auth] Google sign-in successful — profile:", profileId, "email:", email ?? "(none)", "mode:", mode)
+  res.json({ user: { id: profileId, email, name, picture, mode, proRole }, accessToken: backendToken })
 })
 
 export default router

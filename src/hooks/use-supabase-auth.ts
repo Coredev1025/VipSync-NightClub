@@ -1,5 +1,5 @@
 import * as React from "react"
-import { api, isApiConnected, setAccessToken } from "@/lib/api"
+import { setAccessToken } from "@/lib/api"
 import { supabase } from "@/lib/supabase"
 
 export interface AuthUser {
@@ -19,35 +19,8 @@ export interface SupabaseAuthState {
 }
 
 /**
- * Sync backend JWT with current Supabase session.
- * Call after sign-in or when session is restored so API requests are authenticated.
- */
-async function syncBackendToken(session: { access_token: string } | null): Promise<void> {
-  if (!session) {
-    setAccessToken(null)
-    return
-  }
-  if (!isApiConnected()) return
-  const { data: { session: fresh } } = await supabase.auth.refreshSession()
-  const token = (fresh?.access_token ?? session.access_token).trim()
-  if (!token) {
-    setAccessToken(null)
-    return
-  }
-  const res = await api.post<{ accessToken: string; error?: string; hint?: string }>("/api/auth/supabase", {
-    access_token: token,
-  })
-  if (res?.accessToken) {
-    setAccessToken(res.accessToken)
-  } else {
-    setAccessToken(null)
-    throw new Error(res?.error ?? res?.hint ?? "Backend did not return an access token.")
-  }
-}
-
-/**
- * Provides current Supabase session, sign-out, and backend token sync.
- * Does not provide sign-in (e.g. use magic link or other provider from elsewhere).
+ * Provides current Supabase user only. Backend JWT sync is handled by AuthSyncListener
+ * so we avoid duplicate syncs and refreshSession() loops that cause request storms.
  */
 export function useSupabaseAuth(): SupabaseAuthState {
   const [isLoading, setIsLoading] = React.useState(false)
@@ -56,20 +29,15 @@ export function useSupabaseAuth(): SupabaseAuthState {
 
   React.useEffect(() => {
     supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) {
-        setUser(session.user)
-        syncBackendToken(session).catch(() => {})
-      } else {
-        setAccessToken(null)
-      }
+      setUser(session?.user ?? null)
+      if (!session) setAccessToken(null)
     })
 
     const {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       setUser(session?.user ?? null)
-      if (session) syncBackendToken(session).catch(() => {})
-      else setAccessToken(null)
+      if (!session) setAccessToken(null)
     })
 
     return () => subscription.unsubscribe()

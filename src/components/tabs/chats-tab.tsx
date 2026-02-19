@@ -9,6 +9,7 @@ import { GSEmojiPicker } from "@/components/chat/gs-emoji-picker"
 import { GSNewContact } from "@/components/chat/gs-new-contact"
 import { GSNewGroup } from "@/components/chat/gs-new-group"
 import { useChats } from "@/contexts/chats-context"
+import { api } from "@/lib/api"
 
 interface Contact {
   id: number | string
@@ -16,6 +17,13 @@ interface Contact {
   phone?: string
   avatar?: string
   status?: string
+  email?: string
+}
+
+/** True if id is a real profile id (not our synthetic contact_/chat_ id). */
+function validProfileId(id: number | string): boolean {
+  const s = String(id)
+  return s.length > 0 && !/^contact_/.test(s) && !/^chat_/.test(s)
 }
 
 type ViewState = "list" | "chat" | "addChat" | "calling" | "newGroup" | "newContact"
@@ -27,7 +35,7 @@ export interface ChatsTabProps {
 }
 
 export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}) {
-  const { chats, getMessages, fetchMessages, sendMessage, createChat } = useChats()
+  const { chats, getMessages, fetchMessages, sendMessage, createChat, markChatRead, loadMoreMessages, hasMoreMessages } = useChats()
   const [viewState, setViewState] = React.useState<ViewState>("list")
   const [selectedChat, setSelectedChat] = React.useState<ChatItem | null>(null)
   const [selectedContact, setSelectedContact] = React.useState<Contact | null>(null)
@@ -44,9 +52,11 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
 
   React.useEffect(() => {
     if (viewState === "chat" && selectedChat && !messagesLoaded) {
-      fetchMessages(String(selectedChat.id)).then(() => setMessagesLoaded(true))
+      const chatId = String(selectedChat.id)
+      fetchMessages(chatId).then(() => setMessagesLoaded(true))
+      markChatRead(chatId)
     }
-  }, [viewState, selectedChat, messagesLoaded, fetchMessages])
+  }, [viewState, selectedChat, messagesLoaded, fetchMessages, markChatRead])
 
   const handleAddChatPress = () => {
     setViewState("addChat")
@@ -55,11 +65,13 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
   const handleContactPress = React.useCallback(
     async (contact: Contact) => {
       setSelectedContact(contact)
+      const memberIds = validProfileId(contact.id) ? [String(contact.id)] : undefined
       const created = await createChat({
         name: contact.name,
         avatar: contact.avatar,
         phone: contact.phone,
         isGroup: false,
+        memberIds,
       })
       const chat: ChatItem = created ?? {
         id: `chat_${contact.id}_${Date.now()}`,
@@ -82,10 +94,12 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
   const handleNewGroupContinue = React.useCallback(
     async (selectedContacts: Contact[]) => {
       const groupName = selectedContacts.map((c) => c.name).join(", ")
+      const memberIds = selectedContacts.map((c) => String(c.id)).filter(validProfileId)
       const created = await createChat({
         name: groupName.length > 30 ? `${groupName.substring(0, 30)}...` : groupName,
         avatar: selectedContacts[0]?.avatar,
         isGroup: true,
+        memberIds: memberIds.length > 0 ? memberIds : undefined,
       })
       const chat: ChatItem = created ?? {
         id: `group_${Date.now()}`,
@@ -110,11 +124,25 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
         id: `contact_${Date.now()}`,
         ...contactData,
       }
+      let memberIds: string[] | undefined
+      if (contactData.email?.trim()) {
+        try {
+          const r = await api.get<{ id: string }>("/api/profile/lookup", {
+            params: { email: contactData.email.trim() },
+          })
+          memberIds = [r.id]
+        } catch {
+          memberIds = undefined
+        }
+      } else {
+        memberIds = undefined
+      }
       const created = await createChat({
         name: contactData.name,
         avatar: contactData.avatar,
         phone: contactData.phone,
         isGroup: false,
+        memberIds,
       })
       const chat: ChatItem = created ?? {
         id: `chat_${newContact.id}_${Date.now()}`,
@@ -192,7 +220,8 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
   }
 
   if (viewState === "chat" && selectedChat) {
-    const chatMessages = getMessages(String(selectedChat.id))
+    const chatId = String(selectedChat.id)
+    const chatMessages = getMessages(chatId)
     return (
       <>
         <GSChatDetails
@@ -200,6 +229,8 @@ export function ChatsTab({ onOrderSynced, userMode = false }: ChatsTabProps = {}
           contactAvatar={selectedChat.img}
           lastSeen="last seen today at 4:10 pm"
           messages={chatMessages}
+          hasMoreOlder={hasMoreMessages(chatId)}
+          onLoadOlder={() => loadMoreMessages(chatId)}
           onOrderSynced={onOrderSynced}
           onBack={() => {
             setSelectedChat(null)

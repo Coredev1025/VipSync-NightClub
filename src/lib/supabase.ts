@@ -9,10 +9,10 @@ const supabaseUrl = Constants.expoConfig?.extra?.supabaseUrl || process.env.EXPO
 const supabaseAnonKey =
   Constants.expoConfig?.extra?.supabaseAnonKey || process.env.EXPO_PUBLIC_SUPABASE_ANON_KEY || ""
 
-// Longer lock timeout to avoid ProcessLockAcquireTimeoutError when multiple auth
-// operations run at once on app load (getSession + onAuthStateChange in app-providers
-// and use-supabase-auth). Default 10s can be too short with AsyncStorage on RN.
-const AUTH_LOCK_TIMEOUT_MS = 25000
+// Longer lock timeout to avoid auth-token lock timeouts when multiple auth
+// operations run at once on app load (getSession in app-providers, index, chats-context, etc.).
+// AsyncStorage on RN is slow and only one operation can hold the lock at a time.
+const AUTH_LOCK_TIMEOUT_MS = 60000
 const lock = <R>(name: string, _acquireTimeout: number, fn: () => Promise<R>) =>
   processLock(name, AUTH_LOCK_TIMEOUT_MS, fn)
 

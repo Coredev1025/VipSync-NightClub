@@ -42,14 +42,14 @@ interface GuestAccountData {
   avatarUri?: string
 }
 
-const DEFAULT_GUEST_ACCOUNT: GuestAccountData = {
-  displayName: "Guest User",
-  email: "",
-  avatarUri: "",
-}
-
 interface GuestPrivacyPrefs {
   profileVisible: boolean
+}
+
+const DEFAULT_GUEST_ACCOUNT: GuestAccountData = {
+  displayName: "Guest",
+  email: "",
+  avatarUri: "",
 }
 
 const DEFAULT_GUEST_PRIVACY: GuestPrivacyPrefs = { profileVisible: true }
@@ -530,7 +530,7 @@ function GuestAccountSettingsContent({
   const handleSave = React.useCallback(async () => {
     setSaving(true)
     const payload = {
-      displayName: displayName.trim() || "Guest User",
+      displayName: displayName.trim(),
       avatarUri: avatarUri.trim(),
     }
     try {

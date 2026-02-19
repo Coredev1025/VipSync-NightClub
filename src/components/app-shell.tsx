@@ -23,17 +23,19 @@ import { Input } from "@/components/ui/input"
 import { NeonAvatar } from "@/components/ui/neon-avatar"
 import { VIPsyncLogoCompact } from "@/components/ui/vipsync-logo"
 import { getTabsForRole, type NightclubRole, type StaffTabId } from "@/constants/role-permissions"
+import { useChatsOptional } from "@/contexts/chats-context"
+import { useLiveFeedOptional } from "@/contexts/live-feed-context"
 import { useResponsive } from "@/hooks/use-responsive"
 import { resolveAvatar } from "@/lib/assets"
 import { useTheme } from "@/theme/theme-provider"
 
 type TabType = "home" | "chats" | "map" | "ops" | "profile"
 
-const ALL_TABS: Array<{ id: TabType; label: string; icon: React.ComponentType<{ size?: number; color?: string }>; badge?: number }> = [
+const ALL_TABS: Array<{ id: TabType; label: string; icon: React.ComponentType<{ size?: number; color?: string }> }> = [
   { id: "home", label: "Home", icon: Home },
-  { id: "chats", label: "Chats", icon: MessageSquare, badge: 3 },
+  { id: "chats", label: "Chats", icon: MessageSquare },
   { id: "map", label: "Map", icon: Map },
-  { id: "ops", label: "Ops", icon: Activity, badge: 2 },
+  { id: "ops", label: "Ops", icon: Activity },
   { id: "profile", label: "Profile", icon: User },
 ]
 
@@ -151,14 +153,27 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
   const { horizontalPadding } = useResponsive()
+  const chatsContext = useChatsOptional()
+  const liveFeed = useLiveFeedOptional()
+
+  const chatUnreadCount = React.useMemo(
+    () => (chatsContext?.chats ?? []).reduce((sum, c) => sum + c.unread, 0),
+    [chatsContext?.chats]
+  )
+  const opsUnreadCount = liveFeed?.unreadCount ?? 0
 
   const allowedTabIds = React.useMemo(
     () => getTabsForRole(userRole as NightclubRole | undefined),
     [userRole]
   )
   const tabs = React.useMemo(
-    () => ALL_TABS.filter((t) => allowedTabIds.includes(t.id as StaffTabId)),
-    [allowedTabIds]
+    () =>
+      ALL_TABS.filter((t) => allowedTabIds.includes(t.id as StaffTabId)).map((t) => ({
+        ...t,
+        badge:
+          t.id === "chats" ? (chatUnreadCount > 0 ? chatUnreadCount : undefined) : t.id === "ops" ? (opsUnreadCount > 0 ? opsUnreadCount : undefined) : undefined,
+      })),
+    [allowedTabIds, chatUnreadCount, opsUnreadCount]
   )
 
   const [activeTab, setActiveTab] = React.useState<TabType>("home")
@@ -167,6 +182,9 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
       setActiveTab((allowedTabIds[0] ?? "home") as TabType)
     }
   }, [allowedTabIds, activeTab])
+  React.useEffect(() => {
+    if (activeTab === "ops") liveFeed?.markFeedViewed()
+  }, [activeTab, liveFeed])
   const [pendingChatOrder, setPendingChatOrder] = React.useState<{
     tableNumber: number
     guest: string

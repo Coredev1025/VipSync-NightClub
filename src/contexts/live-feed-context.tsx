@@ -27,6 +27,10 @@ interface LiveFeedContextValue {
   clearFeed: () => Promise<void>
   refetch: () => Promise<void>
   isApiConnected: boolean
+  /** Number of feed items not yet seen (created after last view). */
+  unreadCount: number
+  /** Call when user opens Ops tab to mark feed as viewed. */
+  markFeedViewed: () => void
 }
 
 const LiveFeedContext = React.createContext<LiveFeedContextValue | null>(null)
@@ -46,8 +50,15 @@ function normalizeFeedItem(r: Record<string, unknown>): LiveFeedItem {
 
 export function LiveFeedProvider({ children }: { children: React.ReactNode }) {
   const [feedItems, setFeedItems] = React.useState<LiveFeedItem[]>([])
+  const [lastViewedAt, setLastViewedAt] = React.useState<number>(0)
   const connected = isApiConnected()
   const { hasBackendToken } = useApiAuth()
+
+  const unreadCount = React.useMemo(
+    () => feedItems.filter((item) => (item.createdAt ?? 0) > lastViewedAt).length,
+    [feedItems, lastViewedAt]
+  )
+  const markFeedViewed = React.useCallback(() => setLastViewedAt(Date.now()), [])
 
   const refetch = React.useCallback(async () => {
     if (!connected) return
@@ -130,8 +141,19 @@ export function LiveFeedProvider({ children }: { children: React.ReactNode }) {
   }, [connected])
 
   const value = React.useMemo<LiveFeedContextValue>(
-    () => ({ feedItems, setFeedItems, addFeedItem, updateFeedItem, removeFeedItem, clearFeed, refetch, isApiConnected: connected }),
-    [feedItems, setFeedItems, addFeedItem, updateFeedItem, removeFeedItem, clearFeed, refetch, connected]
+    () => ({
+      feedItems,
+      setFeedItems,
+      addFeedItem,
+      updateFeedItem,
+      removeFeedItem,
+      clearFeed,
+      refetch,
+      isApiConnected: connected,
+      unreadCount,
+      markFeedViewed,
+    }),
+    [feedItems, setFeedItems, addFeedItem, updateFeedItem, removeFeedItem, clearFeed, refetch, connected, unreadCount, markFeedViewed]
   )
 
   return <LiveFeedContext.Provider value={value}>{children}</LiveFeedContext.Provider>

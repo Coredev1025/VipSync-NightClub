@@ -9,6 +9,7 @@ router.use(authMiddleware)
 const CreateChatSchema = z.object({
   name: z.string(),
   avatar: z.string().optional(),
+  phone: z.string().optional(),
   isGroup: z.boolean().optional(),
   memberIds: z.array(z.string()).optional(),
 })
@@ -16,6 +17,7 @@ const CreateChatSchema = z.object({
 const UpdateChatSchema = z.object({
   name: z.string().optional(),
   avatar: z.string().optional(),
+  phone: z.string().optional(),
   isGroup: z.boolean().optional(),
 })
 
@@ -46,22 +48,80 @@ function chatRowToItem(r, lastMessage, unread = 0) {
   }
 }
 
+/** Returns participant row if user is in chat (or chat creator for backward compat); otherwise null. */
+async function getParticipantOrCreator(chatId, userId) {
+  const { data: participant } = await supabase
+    .from("chat_participants")
+    .select("id, last_read_at")
+    .eq("chat_id", chatId)
+    .eq("profile_id", userId)
+    .single()
+  if (participant) return { participant, lastReadAt: participant.last_read_at ?? null }
+
+  const { data: chat } = await supabase.from("chats").select("created_by").eq("id", chatId).single()
+  if (chat?.created_by === userId) return { participant: { id: "creator" }, lastReadAt: null }
+  return null
+}
+
+/** Ensures user can access chat; returns 403 if not. Returns participant info if allowed. */
+async function ensureCanAccessChat(req, res) {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return null
+  }
+  const info = await getParticipantOrCreator(req.params.id, userId)
+  if (!info) {
+    res.status(403).json({ error: "Not a participant of this chat" })
+    return null
+  }
+  return info
+}
+
+// GET /api/chats — list chats for current user (participant or creator), with last message and unread count
 router.get("/", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" })
     return
   }
+
+  const { data: participantRows } = await supabase
+    .from("chat_participants")
+    .select("chat_id, last_read_at")
+    .eq("profile_id", userId)
+
+  const chatIdsFromParticipants = (participantRows ?? []).map((r) => r.chat_id)
+  const lastReadByChatId = Object.fromEntries(
+    (participantRows ?? []).map((r) => [r.chat_id, r.last_read_at ?? null])
+  )
+
+  const { data: createdChats } = await supabase
+    .from("chats")
+    .select("id")
+    .eq("created_by", userId)
+  const createdIds = new Set((createdChats ?? []).map((c) => c.id))
+  const allChatIds = [...new Set([...chatIdsFromParticipants, ...createdIds])]
+  if (allChatIds.length === 0) {
+    res.json({ chats: [] })
+    return
+  }
+
   const { data: chats, error: chatsErr } = await supabase
     .from("chats")
-    .select("id, name, avatar, is_group, created_at")
+    .select("id, name, avatar, is_group, created_at, updated_at")
+    .in("id", allChatIds)
     .order("updated_at", { ascending: false })
+
   if (chatsErr) {
     res.status(500).json({ error: chatsErr.message })
     return
   }
+
   const result = []
   for (const c of chats ?? []) {
+    const lastReadAt = lastReadByChatId[c.id] ?? null
+
     const { data: last } = await supabase
       .from("chat_messages")
       .select("msg, created_at")
@@ -69,17 +129,37 @@ router.get("/", async (req, res) => {
       .order("created_at", { ascending: false })
       .limit(1)
       .single()
+
+    let unread = 0
+    if (lastReadAt) {
+      const { count } = await supabase
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("chat_id", c.id)
+        .gt("created_at", lastReadAt)
+        .neq("sender_id", userId)
+      unread = count ?? 0
+    } else {
+      const { count } = await supabase
+        .from("chat_messages")
+        .select("id", { count: "exact", head: true })
+        .eq("chat_id", c.id)
+        .neq("sender_id", userId)
+      unread = count ?? 0
+    }
+
     result.push(
       chatRowToItem(
         { ...c, is_group: c.is_group },
         last ? { msg: last.msg, time: last.created_at } : undefined,
-        0
+        unread
       )
     )
   }
   res.json({ chats: result })
 })
 
+// POST /api/chats — create chat and add creator + memberIds to chat_participants
 router.post("/", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -91,11 +171,13 @@ router.post("/", async (req, res) => {
     res.status(400).json({ error: "Invalid body" })
     return
   }
+
   const { data, error } = await supabase
     .from("chats")
     .insert({
       name: parsed.data.name,
       avatar: parsed.data.avatar ?? null,
+      phone: parsed.data.phone ?? null,
       is_group: parsed.data.isGroup ?? false,
       created_by: userId,
     })
@@ -105,20 +187,43 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
+
+  const memberIds = [...new Set([userId, ...(parsed.data.memberIds ?? [])])]
+  await supabase.from("chat_participants").insert(
+    memberIds.map((profile_id) => ({
+      chat_id: data.id,
+      profile_id,
+    }))
+  )
   res.status(201).json(chatRowToItem(data))
 })
 
+// GET /api/chats/:id/messages — paginated; requires participant
 router.get("/:id/messages", async (req, res) => {
-  const { data, error } = await supabase
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
+  const limit = Math.min(Math.max(parseInt(req.query.limit, 10) || 50, 1), 100)
+  const offset = Math.max(parseInt(req.query.offset, 10) || 0, 0)
+
+  const { data: rows, error } = await supabase
     .from("chat_messages")
     .select("id, msg, created_at, me, sender, role")
     .eq("chat_id", req.params.id)
-    .order("created_at", { ascending: true })
+    .order("created_at", { ascending: false })
+    .range(offset, offset + limit - 1)
+
   if (error) {
     res.status(500).json({ error: error.message })
     return
   }
-  const messages = (data ?? []).map((r) => ({
+  const ordered = (rows ?? []).reverse()
+  const messages = ordered.map((r) => ({
     id: r.id,
     msg: r.msg,
     time: r.created_at,
@@ -126,15 +231,25 @@ router.get("/:id/messages", async (req, res) => {
     sender: r.sender ?? undefined,
     role: r.role ?? undefined,
   }))
-  res.json({ messages })
+
+  const { count } = await supabase
+    .from("chat_messages")
+    .select("id", { count: "exact", head: true })
+    .eq("chat_id", req.params.id)
+
+  res.json({ messages, total: count ?? messages.length })
 })
 
+// POST /api/chats/:id/messages — send message; requires participant
 router.post("/:id/messages", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
     res.status(401).json({ error: "Unauthorized" })
     return
   }
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
   const parsed = SendMessageSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid body" })
@@ -167,7 +282,11 @@ router.post("/:id/messages", async (req, res) => {
   })
 })
 
+// PATCH /api/chats/:id/messages/:msgId — requires participant
 router.patch("/:id/messages/:msgId", async (req, res) => {
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
   const parsed = UpdateMessageSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid body" })
@@ -201,7 +320,11 @@ router.patch("/:id/messages/:msgId", async (req, res) => {
   })
 })
 
+// DELETE /api/chats/:id/messages/:msgId — requires participant
 router.delete("/:id/messages/:msgId", async (req, res) => {
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
   const { error } = await supabase
     .from("chat_messages")
     .delete()
@@ -215,7 +338,35 @@ router.delete("/:id/messages/:msgId", async (req, res) => {
   res.status(204).send()
 })
 
+// POST /api/chats/:id/read — mark chat as read for current user
+router.post("/:id/read", async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
+  const access = await getParticipantOrCreator(req.params.id, userId)
+  if (!access) {
+    res.status(403).json({ error: "Not a participant of this chat" })
+    return
+  }
+  const { error } = await supabase
+    .from("chat_participants")
+    .update({ last_read_at: new Date().toISOString() })
+    .eq("chat_id", req.params.id)
+    .eq("profile_id", userId)
+  if (error) {
+    res.status(500).json({ error: error.message })
+    return
+  }
+  res.status(204).send()
+})
+
+// PATCH /api/chats/:id — update chat; requires participant
 router.patch("/:id", async (req, res) => {
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
   const parsed = UpdateChatSchema.safeParse(req.body)
   if (!parsed.success) {
     res.status(400).json({ error: "Invalid body" })
@@ -244,16 +395,33 @@ router.patch("/:id", async (req, res) => {
     .order("created_at", { ascending: false })
     .limit(1)
     .single()
+
+  const userId = req.user?.sub
+  const participantInfo = await getParticipantOrCreator(data.id, userId)
+  let unread = 0
+  if (participantInfo?.lastReadAt) {
+    const { count } = await supabase
+      .from("chat_messages")
+      .select("id", { count: "exact", head: true })
+      .eq("chat_id", data.id)
+      .gt("created_at", participantInfo.lastReadAt)
+      .neq("sender_id", userId)
+    unread = count ?? 0
+  }
   res.json(
     chatRowToItem(
       { ...data, is_group: data.is_group },
       last ? { msg: last.msg, time: last.created_at } : undefined,
-      0
+      unread
     )
   )
 })
 
+// DELETE /api/chats/:id — requires participant
 router.delete("/:id", async (req, res) => {
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
   const { error } = await supabase.from("chats").delete().eq("id", req.params.id)
   if (error) {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })

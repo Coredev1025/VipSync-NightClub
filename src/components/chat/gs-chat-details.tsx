@@ -70,6 +70,9 @@ export interface ChatDetailsProps {
   initialMessages?: ChatMessage[]
   emojiToInsert?: string
   onOrderSynced?: (order: ChatOrderFromMessage) => void
+  /** Show "Load older" at top and call when pressed (for paginated API). */
+  hasMoreOlder?: boolean
+  onLoadOlder?: () => void
 }
 
 function formatTime(timestamp: string): string {
@@ -97,6 +100,8 @@ export function GSChatDetails({
   initialMessages,
   emojiToInsert,
   onOrderSynced,
+  hasMoreOlder,
+  onLoadOlder,
 }: ChatDetailsProps) {
   const mode = useColorScheme()
   const { theme } = useTheme()
@@ -339,6 +344,24 @@ export function GSChatDetails({
           renderItem={({ item, index }) => (
             <ChatItem chat={item} styles={styles} index={index} />
           )}
+          ListHeaderComponent={
+            hasMoreOlder && onLoadOlder ? (
+              <Pressable
+                onPress={onLoadOlder}
+                style={{
+                  paddingVertical: 12,
+                  paddingHorizontal: 16,
+                  alignItems: "center",
+                  borderBottomWidth: 1,
+                  borderBottomColor: theme.colors.border,
+                }}
+              >
+                <Text style={{ color: theme.colors.neonCyan, fontSize: 13, fontFamily: "Inter_500Medium" }}>
+                  Load older messages
+                </Text>
+              </Pressable>
+            ) : null
+          }
           ListFooterComponent={
             showGeminiBlock && lastMsgIsOrder ? (
               <GeminiIntelligenceBlock

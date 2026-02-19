@@ -31,10 +31,24 @@ export default function HomeScreen() {
         setAppState("auth")
         return
       }
-      // After Google OAuth success we land with fromOAuth=1: show auth screen at mode step
+      // After Google OAuth: if user already has profile (Gmail in DB), go to home directly
       if (params.fromOAuth === "1") {
-        setAppState("auth")
-        setAuthInitialStep("mode")
+        getProfile()
+          .then((profile) => {
+            if (profile?.mode === "pro" || profile?.mode === "user") {
+              setAuthMode(profile.mode as SignupMode)
+              setUserRole(profile.pro_role as MapTabUserRole | undefined)
+              setAppState("app")
+              router.replace("/")
+            } else {
+              setAppState("auth")
+              setAuthInitialStep("mode")
+            }
+          })
+          .catch(() => {
+            setAppState("auth")
+            setAuthInitialStep("mode")
+          })
         return
       }
       getProfile()
@@ -49,26 +63,31 @@ export default function HomeScreen() {
         })
         .catch(() => setAppState("auth"))
     })
-  }, [params.fromOAuth])
+  }, [params.fromOAuth, router])
+
+  const lastFocusRefreshRef = React.useRef(0)
+  const FOCUS_REFRESH_THROTTLE_MS = 2000
 
   // On mount: if user has session (e.g. app restarted), go to app
   React.useEffect(() => {
     refreshSessionAndState()
   }, [refreshSessionAndState])
 
-  // When returning from auth callback, index may already be mounted; re-check session on focus so we show app
+  // When returning from auth callback, re-check session on focus. Throttle to avoid getSession+getProfile storm.
   useFocusEffect(
     React.useCallback(() => {
-      // Avoid flickering back to auth once the user is already in the app.
-      if (appState !== "app") {
-        refreshSessionAndState()
-      }
+      if (appState === "app") return
+      const now = Date.now()
+      if (now - lastFocusRefreshRef.current < FOCUS_REFRESH_THROTTLE_MS) return
+      lastFocusRefreshRef.current = now
+      refreshSessionAndState()
     }, [refreshSessionAndState, appState])
   )
 
   const handleSplashComplete = React.useCallback(() => {
-    setAppState("auth")
-  }, [])
+    // Re-run session check so returning users (or signup without logout) go to main app directly
+    refreshSessionAndState()
+  }, [refreshSessionAndState])
 
   const handleAuthComplete = React.useCallback(
     (mode: SignupMode, proRole?: UserRole, profileData?: AuthCompleteData) => {

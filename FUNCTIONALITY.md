@@ -50,7 +50,7 @@ VIPsyncApp is an Expo/React Native nightclub operations and guest experience app
 - **Chat list** — List of chats with avatar, name, last message, time, seen state, unread count. “Main Ops” chat included for staff.
 - **Chat details** — Message list with sender name/role, time, read state. Text input and send; optional emoji picker and camera.
 - **New chat** — Add chat flow: choose existing contact or new contact.
-- **New contact** — Form (name, phone, avatar, status); creates contact and opens new chat.
+- **New contact** — Form (name, email, avatar); creates contact and opens new chat.
 - **New group** — Select multiple contacts; group chat created with combined name.
 - **Calling** — Placeholder/screen for voice/video call (e.g. `GSCalling`).
 - **Camera** — In-chat camera capture (e.g. `GSCamera`).

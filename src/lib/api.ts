@@ -48,6 +48,20 @@ export async function checkApiReachable(): Promise<boolean> {
 interface ApiOptions {
   method?: "GET" | "POST" | "PATCH" | "PUT" | "DELETE"
   body?: unknown
+  /** Query params for GET requests (e.g. { limit: 50, offset: 0 }) */
+  params?: Record<string, string | number | undefined>
+}
+
+function buildUrl(path: string, params?: Record<string, string | number | undefined>): string {
+  const base = getApiBaseUrl()
+  const pathPart = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : `/${path}`}`
+  if (!params || Object.keys(params).length === 0) return pathPart
+  const search = new URLSearchParams()
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== "") search.set(k, String(v))
+  }
+  const q = search.toString()
+  return q ? `${pathPart}${pathPart.includes("?") ? "&" : "?"}${q}` : pathPart
 }
 
 async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
@@ -55,7 +69,7 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
   if (!base && !path.startsWith("http")) {
     throw new Error("[API] No backend URL configured. Set EXPO_PUBLIC_API_URL in .env (see CONNECTION.md).")
   }
-  const url = path.startsWith("http") ? path : `${base}${path.startsWith("/") ? path : `/${path}`}`
+  const url = buildUrl(path, options.params)
   const { method = "GET", body } = options
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -85,7 +99,8 @@ async function request<T>(path: string, options: ApiOptions = {}): Promise<T> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>(path, { method: "GET" }),
+  get: <T>(path: string, options?: { params?: Record<string, string | number | undefined> }) =>
+    request<T>(path, { method: "GET", params: options?.params }),
   post: <T>(path: string, body?: unknown) => request<T>(path, { method: "POST", body }),
   patch: <T>(path: string, body?: unknown) => request<T>(path, { method: "PATCH", body }),
   put: <T>(path: string, body?: unknown) => request<T>(path, { method: "PUT", body }),

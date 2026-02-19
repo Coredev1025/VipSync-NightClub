@@ -43,6 +43,30 @@ router.get("/", async (req, res) => {
   })
 })
 
+/** Look up profile id by email (for adding user to chat). Returns { id } or 404. */
+router.get("/lookup", async (req, res) => {
+  const email = typeof req.query.email === "string" ? req.query.email.trim().toLowerCase() : ""
+  if (!email) {
+    res.status(400).json({ error: "Missing email query" })
+    return
+  }
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("id")
+    .ilike("email", email)
+    .limit(1)
+    .maybeSingle()
+  if (error) {
+    res.status(500).json({ error: error.message })
+    return
+  }
+  if (!data) {
+    res.status(404).json({ error: "No profile found for this email" })
+    return
+  }
+  res.json({ id: data.id })
+})
+
 router.get("/stats", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {

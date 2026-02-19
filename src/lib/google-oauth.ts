@@ -193,6 +193,10 @@ export type SignInWithGoogleResult =
       provider: "google",
       options: {
         redirectTo,
+        // Show Google account picker so user can choose existing Gmail or add another
+        queryParams: {
+          prompt: "select_account",
+        },
       },
     })
   

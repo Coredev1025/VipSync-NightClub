@@ -348,8 +348,7 @@ export function AuthScreen({ onComplete, initialStep }: AuthScreenProps) {
   }, [userName, step, name])
 
   // If user already has a session (e.g. returning user), restore stored mode/role and go to app, or show mode page.
-  // When initialStep is "mode" (e.g. after Google OAuth), show mode step so user can choose. Do not overwrite step
-  // if the user has already navigated to "role" or "profile" (getProfile can resolve late and would reset step).
+  // When initialStep is "mode" (e.g. after Google OAuth), only jump to mode from welcome — don't reset if user already went to role/profile.
   React.useEffect(() => {
     if (!user) return
     let cancelled = false
@@ -357,15 +356,13 @@ export function AuthScreen({ onComplete, initialStep }: AuthScreenProps) {
       .then((profile) => {
         if (cancelled) return
         const currentStep = stepRef.current
-        if (initialStep === "mode") {
-          if (currentStep !== "role" && currentStep !== "profile") {
-            setStep("mode")
-          }
-          return
-        }
+        // Gmail already in DB with mode → go to home directly (also when coming from OAuth)
         if (profile?.mode === "pro" || profile?.mode === "user") {
           onComplete(profile.mode as SignupMode, profile.pro_role as UserRole | undefined)
-        } else if (currentStep !== "role" && currentStep !== "profile") {
+          return
+        }
+        // Only set step to "mode" when still on welcome (post-OAuth skip welcome). Never reset if user is on role or profile.
+        if (currentStep !== "role" && currentStep !== "profile" && (initialStep === "mode" || currentStep === "welcome")) {
           setStep("mode")
         }
       })
