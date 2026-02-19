@@ -2,8 +2,10 @@ import { Canvas, Group, Path, Skia } from "@shopify/react-native-skia"
 import {
   Activity,
   ArrowUpRight,
+  ChevronRight,
   Clock,
   DollarSign,
+  List,
   Target,
   Users,
   Wine,
@@ -11,7 +13,7 @@ import {
 } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
-import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from "react-native"
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, {
   FadeIn,
   FadeInDown,
@@ -23,9 +25,10 @@ import Animated, {
   withTiming
 } from "react-native-reanimated"
 
-import { useLiveFeedOptional } from "@/contexts/live-feed-context"
+import { useLiveFeedOptional, type LiveFeedItem } from "@/contexts/live-feed-context"
 import { useTablesOptional } from "@/contexts/tables-context"
 import { Card } from "@/components/ui/card"
+import { ModalSheet } from "@/components/ui/modal"
 import { api, isApiConnected } from "@/lib/api"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
@@ -417,6 +420,8 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
     avgSpendPerGuest: number
   } | null>(null)
   const [loadError, setLoadError] = React.useState<string | null>(null)
+  const [showLiveFeedDetailSheet, setShowLiveFeedDetailSheet] = React.useState(false)
+  const [selectedFeedItem, setSelectedFeedItem] = React.useState<LiveFeedItem | null>(null)
   const connected = isApiConnected()
   React.useEffect(() => {
     if (!connected || !canViewFeed) {
@@ -651,8 +656,33 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
                   Live feed
                 </Text>
               </View>
-              <Card variant="glass" style={{ padding: 12, gap: 8, maxHeight: 240 }}>
-                <ScrollView style={{ maxHeight: 216 }} showsVerticalScrollIndicator={false}>
+              <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonCyan}44` }}>
+                <Pressable
+                  onPress={() => setShowLiveFeedDetailSheet(true)}
+                  style={({ pressed }) => ({
+                    flexDirection: "row",
+                    alignItems: "center",
+                    justifyContent: "space-between",
+                    paddingVertical: 10,
+                    paddingHorizontal: 12,
+                    marginBottom: 10,
+                    borderRadius: 12,
+                    borderWidth: 1,
+                    borderColor: theme.colors.border,
+                    backgroundColor: `${theme.colors.muted}22`,
+                    opacity: pressed ? 0.8 : 1,
+                  })}
+                >
+                  <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                    <List size={18} color={theme.colors.neonCyan} />
+                    <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 13 }}>Details</Text>
+                    <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
+                      View all {feedItems.length} items
+                    </Text>
+                  </View>
+                  <ChevronRight size={18} color={theme.colors.mutedForeground} />
+                </Pressable>
+                <View style={{ gap: 10, maxHeight: 220 }}>
                   {feedItems.length === 0 ? (
                     <View style={{ paddingVertical: 24, paddingHorizontal: 8, alignItems: "center" }}>
                       <Text style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
@@ -660,38 +690,118 @@ export function OpsTab({ userRole }: OpsTabProps = {}) {
                       </Text>
                     </View>
                   ) : (
-                    feedItems.map((item) => (
-                      <View
+                    feedItems.slice(0, 5).map((item) => (
+                      <Pressable
                         key={item.id}
-                        style={{
-                          flexDirection: "row",
-                          alignItems: "center",
-                          justifyContent: "space-between",
-                          paddingVertical: 8,
-                          paddingHorizontal: 8,
-                          borderBottomWidth: 1,
-                          borderBottomColor: theme.colors.border,
+                        onPress={() => {
+                          setSelectedFeedItem(item)
+                          setShowLiveFeedDetailSheet(true)
                         }}
+                        style={({ pressed }) => ({ opacity: pressed ? 0.8 : 1 })}
                       >
-                        <View style={{ flex: 1, gap: 2 }}>
-                          <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
-                            {item.title}
-                          </Text>
-                          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }} numberOfLines={1}>
-                            {item.description}
-                            {item.table != null ? ` · T${item.table}` : ""}
-                          </Text>
-                        </View>
-                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{item.time}</Text>
-                      </View>
+                        <Card
+                          variant="glass"
+                          style={{
+                            padding: 12,
+                            borderColor: `${theme.colors.neonCyan}44`,
+                          }}
+                        >
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 14 }} numberOfLines={1}>
+                                  {item.title}
+                                </Text>
+                                {item.table != null ? (
+                                  <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>T{item.table}</Text>
+                                ) : null}
+                              </View>
+                              <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }} numberOfLines={2}>
+                                {item.description}
+                              </Text>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 6 }}>
+                                <Clock size={12} color={theme.colors.mutedForeground} />
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{item.time}</Text>
+                              </View>
+                            </View>
+                          </View>
+                        </Card>
+                      </Pressable>
                     ))
                   )}
-                </ScrollView>
+                </View>
               </Card>
             </MotiView>
           ) : null}
         </MotiView>
       </ScrollView>
+
+      {/* Live feed detail sheet */}
+      <ModalSheet
+        open={showLiveFeedDetailSheet}
+        onClose={() => {
+          setShowLiveFeedDetailSheet(false)
+          setSelectedFeedItem(null)
+        }}
+        maxHeightPct={0.9}
+        showHeader={false}
+      >
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 24 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingTop: 12 }}>
+            <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 18 }}>Live feed</Text>
+            <Pressable
+              onPress={() => {
+                setShowLiveFeedDetailSheet(false)
+                setSelectedFeedItem(null)
+              }}
+              style={{ padding: 8 }}
+            >
+              <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold" }}>Close</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+            <View style={{ gap: 10 }}>
+              {feedItems.length === 0 ? (
+                <Text style={{ color: theme.colors.mutedForeground, fontSize: 14, textAlign: "center", paddingVertical: 24 }}>
+                  No feed items yet.
+                </Text>
+              ) : (
+                feedItems.map((item) => (
+                  <Card
+                    key={item.id}
+                    variant="glass"
+                    style={{
+                      padding: 12,
+                      borderColor: selectedFeedItem?.id === item.id ? theme.colors.neonCyan : `${theme.colors.neonCyan}44`,
+                      borderWidth: selectedFeedItem?.id === item.id ? 2 : 1,
+                    }}
+                  >
+                    <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                      <View style={{ flex: 1, minWidth: 0 }}>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 4 }}>
+                          <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 14 }} numberOfLines={1}>
+                            {item.title}
+                          </Text>
+                          {item.table != null ? (
+                            <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>Table {item.table}</Text>
+                          ) : null}
+                        </View>
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>{item.description}</Text>
+                        <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 8 }}>
+                          <Clock size={12} color={theme.colors.mutedForeground} />
+                          <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{item.time}</Text>
+                          <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>·</Text>
+                          <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{item.type}</Text>
+                        </View>
+                      </View>
+                    </View>
+                  </Card>
+                ))
+              )}
+            </View>
+          </ScrollView>
+        </View>
+      </ModalSheet>
     </View>
   )
 }

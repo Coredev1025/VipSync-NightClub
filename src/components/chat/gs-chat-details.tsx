@@ -14,8 +14,10 @@ import {
 } from "lucide-react-native"
 import * as React from "react"
 import {
+    Alert,
     FlatList,
     KeyboardAvoidingView,
+    Modal,
     Platform,
     Pressable,
     Text,
@@ -43,6 +45,7 @@ export interface ChatMessage {
   me: boolean
   uri?: string
   reply?: number
+  sender_id?: string
   sender?: string
   role?: string
 }
@@ -73,6 +76,14 @@ export interface ChatDetailsProps {
   /** Show "Load older" at top and call when pressed (for paginated API). */
   hasMoreOlder?: boolean
   onLoadOlder?: () => void
+  /** For sender resolution: show contact name or "Unknown" for received messages. */
+  contacts?: Array<{ profileId?: string; name: string }>
+  /** When set, own messages show long-press Edit/Delete. */
+  chatId?: string
+  onEditMessage?: (messageId: string, newText: string) => void
+  onDeleteMessage?: (messageId: string) => void
+  /** When false, show notification and disable sending (e.g. mutual contacts required). */
+  canSend?: boolean
 }
 
 function formatTime(timestamp: string): string {
@@ -102,6 +113,11 @@ export function GSChatDetails({
   onOrderSynced,
   hasMoreOlder,
   onLoadOlder,
+  contacts,
+  chatId,
+  onEditMessage,
+  onDeleteMessage,
+  canSend = true,
 }: ChatDetailsProps) {
   const mode = useColorScheme()
   const { theme } = useTheme()
@@ -109,6 +125,30 @@ export function GSChatDetails({
   const chatRef = React.useRef<FlatList>(null)
   const [options, setOptions] = React.useState(false)
   const [addToMapSynced, setAddToMapSynced] = React.useState(false)
+  const [editingMessage, setEditingMessage] = React.useState<ChatMessage | null>(null)
+  const [editingText, setEditingText] = React.useState("")
+
+  const handleRequestEdit = React.useCallback((msg: ChatMessage) => {
+    setEditingMessage(msg)
+    setEditingText(msg.msg)
+  }, [])
+  const handleSaveEdit = React.useCallback(() => {
+    if (editingMessage && editingText.trim() && onEditMessage) {
+      onEditMessage(String(editingMessage.id), editingText.trim())
+      setEditingMessage(null)
+      setEditingText("")
+    }
+  }, [editingMessage, editingText, onEditMessage])
+  const handleRequestDelete = React.useCallback(
+    (msg: ChatMessage) => {
+      if (!onDeleteMessage) return
+      Alert.alert("Delete message", "Remove this message?", [
+        { text: "Cancel", style: "cancel" },
+        { text: "Delete", style: "destructive", onPress: () => onDeleteMessage(String(msg.id)) },
+      ])
+    },
+    [onDeleteMessage]
+  )
   const defaultMessages: ChatMessage[] = [
     { id: 1, msg: "Hey There Jason Holder. How can I help you today?", time: new Date().toISOString(), me: false },
     { id: 2, msg: "Hello", time: new Date().toISOString(), me: true },
@@ -342,7 +382,15 @@ export function GSChatDetails({
           data={chatData}
           keyExtractor={(item) => String(item.id)}
           renderItem={({ item, index }) => (
-            <ChatItem chat={item} styles={styles} index={index} />
+            <ChatItem
+              chat={item}
+              styles={styles}
+              index={index}
+              contacts={contacts}
+              canEditDelete={Boolean(chatId && item.me && (onEditMessage || onDeleteMessage))}
+              onRequestEdit={handleRequestEdit}
+              onRequestDelete={handleRequestDelete}
+            />
           )}
           ListHeaderComponent={
             hasMoreOlder && onLoadOlder ? (
@@ -377,9 +425,55 @@ export function GSChatDetails({
           contentContainerStyle={styles.chatListing}
         />
 
+        {!canSend ? (
+          <View
+            style={{
+              paddingHorizontal: 16,
+              paddingVertical: 10,
+              backgroundColor: `${theme.colors.neonPink}22`,
+              borderTopWidth: 1,
+              borderTopColor: theme.colors.border,
+            }}
+          >
+            <Text style={{ color: theme.colors.foreground, fontSize: 13, fontFamily: "Inter_500Medium", textAlign: "center" }}>
+              You can only message when you're both contacts. Add each other to contacts to chat.
+            </Text>
+          </View>
+        ) : null}
+
+        {editingMessage ? (
+          <Modal visible transparent animationType="fade">
+            <Pressable
+              style={{ flex: 1, backgroundColor: "rgba(0,0,0,0.6)", justifyContent: "center", padding: 24 }}
+              onPress={() => setEditingMessage(null)}
+            >
+              <Pressable style={{ backgroundColor: theme.colors.card, borderRadius: 16, padding: 20, borderWidth: 1, borderColor: theme.colors.border }} onPress={(e) => e.stopPropagation()}>
+                <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", marginBottom: 12 }}>Edit message</Text>
+                <TextInput
+                  style={{ backgroundColor: theme.colors.background, borderWidth: 1, borderColor: theme.colors.border, borderRadius: 12, padding: 12, color: theme.colors.foreground, fontFamily: "Inter_400Regular", minHeight: 44 }}
+                  value={editingText}
+                  onChangeText={setEditingText}
+                  placeholder="Message"
+                  placeholderTextColor={theme.colors.mutedForeground}
+                  multiline
+                />
+                <View style={{ flexDirection: "row", gap: 10, marginTop: 16 }}>
+                  <Pressable onPress={() => setEditingMessage(null)} style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderRadius: 12, backgroundColor: theme.colors.muted }}>
+                    <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold" }}>Cancel</Text>
+                  </Pressable>
+                  <Pressable onPress={handleSaveEdit} style={{ flex: 1, paddingVertical: 12, alignItems: "center", borderRadius: 12, backgroundColor: theme.colors.neonPink }}>
+                    <Text style={{ color: "#fff", fontFamily: "Inter_600SemiBold" }}>Save</Text>
+                  </Pressable>
+                </View>
+              </Pressable>
+            </Pressable>
+          </Modal>
+        ) : null}
+
         <Animated.View
           entering={SlideInDown.duration(300).springify()}
-          style={styles.chatInputHolder}
+          style={[styles.chatInputHolder, !canSend && { opacity: 0.6 }]}
+          pointerEvents={canSend ? "auto" : "none"}
         >
           <View style={styles.chatInput}>
             {onEmojiPress && (
@@ -395,6 +489,7 @@ export function GSChatDetails({
               onChangeText={setMessage}
               value={message}
               onSubmitEditing={sendMessage}
+              editable={canSend}
             />
 
             {onCameraPress && (
@@ -404,7 +499,7 @@ export function GSChatDetails({
             )}
           </View>
 
-          <Pressable onPress={sendMessage} style={styles.sendBtn}>
+          <Pressable onPress={sendMessage} style={styles.sendBtn} disabled={!canSend}>
             <Send size={20} color="#fff" />
           </Pressable>
         </Animated.View>
@@ -582,13 +677,36 @@ function ChatItem({
   chat,
   styles,
   index,
+  contacts,
+  canEditDelete,
+  onRequestEdit,
+  onRequestDelete,
 }: {
   chat: ChatMessage
   styles: ChatItemStyles
   index: number
+  contacts?: Array<{ profileId?: string; name: string }>
+  canEditDelete?: boolean
+  onRequestEdit?: (msg: ChatMessage) => void
+  onRequestDelete?: (msg: ChatMessage) => void
 }) {
   const { width } = useWindowDimensions()
   const { theme } = useTheme()
+
+  const senderDisplay =
+    !chat.me &&
+    (chat.sender_id && contacts
+      ? (contacts.find((c) => c.profileId === chat.sender_id)?.name ?? "Unknown")
+      : (chat.sender ?? "Unknown"))
+
+  const handleLongPress = React.useCallback(() => {
+    if (!canEditDelete || (!onRequestEdit && !onRequestDelete)) return
+    const buttons: Array<{ text: string; onPress?: () => void; style?: "default" | "cancel" | "destructive" }> = []
+    if (onRequestEdit) buttons.push({ text: "Edit", onPress: () => onRequestEdit(chat) })
+    if (onRequestDelete) buttons.push({ text: "Delete", style: "destructive", onPress: () => onRequestDelete(chat) })
+    buttons.push({ text: "Cancel", style: "cancel" })
+    Alert.alert("Message", undefined, buttons)
+  }, [canEditDelete, onRequestEdit, onRequestDelete, chat])
 
   return (
     <Animated.View
@@ -598,7 +716,7 @@ function ChatItem({
           : FadeInLeft.delay(index * 30).duration(250).springify()
       }
     >
-      {chat.sender ? (
+      {!chat.me && senderDisplay ? (
         <Text
           style={{
             color: theme.colors.neonCyan,
@@ -607,14 +725,13 @@ function ChatItem({
             marginBottom: 4,
           }}
         >
-          {chat.sender} {chat.role ? ` · ${chat.role}` : ""}
+          {senderDisplay} {chat.role ? ` · ${chat.role}` : ""}
         </Text>
       ) : null}
-      <View
-        style={[
-          styles.chatBubble,
-          chat.me ? styles.chatBubbleMe : null,
-        ]}
+      <Pressable
+        onLongPress={handleLongPress}
+        delayLongPress={400}
+        style={[styles.chatBubble, chat.me ? styles.chatBubbleMe : null]}
       >
         {chat.uri && (
           <Image
@@ -642,7 +759,7 @@ function ChatItem({
           }}
         >
           <Text style={styles.chatTime}>{formatTime(chat.time)}</Text>
-          {chat.me && (
+          {!chat.me && (
             <CheckCheck
               size={12}
               color={theme.colors.neonCyan}
@@ -650,7 +767,7 @@ function ChatItem({
             />
           )}
         </View>
-      </View>
+      </Pressable>
     </Animated.View>
   )
 }

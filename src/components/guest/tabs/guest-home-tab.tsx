@@ -12,10 +12,10 @@ import { api } from "@/lib/api"
 import { formatNumber } from "@/lib/utils"
 import { useTheme } from "@/theme/theme-provider"
 import { Image } from "expo-image"
-import { Calendar, Check, Clock, Gavel } from "lucide-react-native"
+import { Calendar, Check, ChevronRight, Clock, Gavel, List, Music } from "lucide-react-native"
 import { MotiView } from "moti"
 import * as React from "react"
-import { ScrollView, StyleSheet, Text, View } from "react-native"
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native"
 import Animated, { FadeInDown, FadeInRight } from "react-native-reanimated"
 const homeStorageKeys = {
   mode: "vipsync_guest_home_mode_v1",
@@ -58,57 +58,24 @@ type VipTableItem = { type: "bidding"; data: VipBiddingTable } | { type: "bookin
 
 /** Combined list for VIP TABLES: from API (bidding first, then booking). */
 
-interface HomeEvent {
-  id: string
-  title: string
-  dateLabel: string
-  time: string
-  venue: string
-  tag?: "TONIGHT" | "LIVE" | "UPCOMING"
-}
+const TOP_VIBE_EVENTS = 5
+const STATUS_ORDER: Record<VibeEvent["status"], number> = { live: 0, upcoming: 1 }
 
-/** Fallback when no events from API (empty so vibe/API is source of truth). */
-const homeEventsFallback: HomeEvent[] = []
+function sortVibeEventsByRecent(events: VibeEvent[]): VibeEvent[] {
+  return [...events].sort((a, b) => {
+    const orderA = STATUS_ORDER[a.status] ?? 1
+    const orderB = STATUS_ORDER[b.status] ?? 1
+    const statusDiff = orderA - orderB
+    if (statusDiff !== 0) return statusDiff
+    const idA = a.id.startsWith("event-") ? parseInt(a.id.replace("event-", ""), 10) : parseInt(a.id, 10) || 0
+    const idB = b.id.startsWith("event-") ? parseInt(b.id.replace("event-", ""), 10) : parseInt(b.id, 10) || 0
+    return idB - idA
+  })
+}
 
 function getIsOpenNow(date: Date) {
   const hour = date.getHours()
   return hour >= 21 || hour < 3
-}
-
-function formatDateLabel(dateIso: string): string {
-  if (!dateIso) return ""
-  const d = new Date(dateIso + "T12:00:00")
-  if (Number.isNaN(d.getTime())) return dateIso
-  const today = new Date()
-  const tomorrow = new Date(today)
-  tomorrow.setDate(tomorrow.getDate() + 1)
-  if (d.toDateString() === today.toDateString()) return "Today"
-  if (d.toDateString() === tomorrow.toDateString()) return "Tomorrow"
-  return d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })
-}
-
-function mapVibeEventsToHomeEvents(vibeEvents: VibeEvent[]): HomeEvent[] {
-  const today = new Date()
-  return vibeEvents.map((evt) => {
-    const date = evt.date
-    const dateObj = date ? new Date(date + "T12:00:00") : null
-    let tag: HomeEvent["tag"] | undefined
-    if (evt.status === "live") {
-      tag = "LIVE"
-    } else if (dateObj && dateObj.toDateString() === today.toDateString()) {
-      tag = "TONIGHT"
-    } else {
-      tag = "UPCOMING"
-    }
-    return {
-      id: evt.id,
-      title: evt.djName,
-      dateLabel: date ? formatDateLabel(date) : "",
-      time: evt.time,
-      venue: "Tokyo Pearl",
-      tag,
-    }
-  })
 }
 
 export function GuestHomeTab() {
@@ -139,12 +106,14 @@ export function GuestHomeTab() {
   const [biddingTable, setBiddingTable] = React.useState<FeaturedTable | null>(null)
   const [bidAmount, setBidAmount] = React.useState("")
   const [tableBids, setTableBids] = React.useState<Record<string, number>>({})
+  const [bookedTableIds, setBookedTableIds] = React.useState<Set<string>>(new Set())
   const isOpenNow = getIsOpenNow(new Date())
-  const eventsFromVibe = React.useMemo(
-    () => (vibeCtx?.vibeEvents && vibeCtx.vibeEvents.length > 0 ? mapVibeEventsToHomeEvents(vibeCtx.vibeEvents) : []),
+  const sortedVibeEvents = React.useMemo(
+    () => (vibeCtx?.vibeEvents ? sortVibeEventsByRecent(vibeCtx.vibeEvents) : []),
     [vibeCtx?.vibeEvents]
   )
-  const homeEvents: HomeEvent[] = eventsFromVibe.length > 0 ? eventsFromVibe : homeEventsFallback
+  const topVibeEvents = React.useMemo(() => sortedVibeEvents.slice(0, TOP_VIBE_EVENTS), [sortedVibeEvents])
+  const [showAllVibeEventsSheet, setShowAllVibeEventsSheet] = React.useState(false)
 
   const currentVibeDj = vibeCtx?.vibe?.djName?.trim()
   const currentVibeGenres = vibeCtx?.vibe?.genres?.trim()
@@ -215,6 +184,7 @@ export function GuestHomeTab() {
     async (data: VipBookingTable) => {
       try {
         await api.post<{ ok: boolean }>(`/api/guest/vip-tables/${data.id}/book`, {})
+        setBookedTableIds((prev) => new Set(prev).add(data.id))
         toast({
           title: "Table booked",
           description: `${data.name} is reserved. See you soon!`,
@@ -340,6 +310,85 @@ export function GuestHomeTab() {
               </View>
               </Card>
             </Animated.View>
+
+            {/* Vibe Events List (same style as pro mode) */}
+            {sortedVibeEvents.length > 0 ? (
+              <Animated.View entering={FadeInDown.delay(150).duration(300).springify()} style={{ marginTop: 12 }}>
+                <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonPurple}44` }}>
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black" }}>Vibe Events</Text>
+                  </View>
+                  <Pressable
+                    onPress={() => setShowAllVibeEventsSheet(true)}
+                    style={({ pressed }) => ({
+                      flexDirection: "row",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      paddingVertical: 10,
+                      paddingHorizontal: 12,
+                      marginBottom: 10,
+                      borderRadius: 12,
+                      borderWidth: 1,
+                      borderColor: theme.colors.border,
+                      backgroundColor: `${theme.colors.muted}22`,
+                      opacity: pressed ? 0.8 : 1,
+                    })}
+                  >
+                    <View style={{ flexDirection: "row", alignItems: "center", gap: 8 }}>
+                      <List size={18} color={theme.colors.neonCyan} />
+                      <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 13 }}>Details</Text>
+                      <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>View all {sortedVibeEvents.length} events</Text>
+                    </View>
+                    <ChevronRight size={18} color={theme.colors.mutedForeground} />
+                  </Pressable>
+                  <View style={{ gap: 10 }}>
+                    {topVibeEvents.map((event, idx) => (
+                      <Animated.View
+                        key={event.id}
+                        entering={FadeInRight.delay(250 + idx * 50).duration(250).springify()}
+                      >
+                        <Card
+                          variant="glass"
+                          style={{
+                            padding: 12,
+                            borderColor:
+                              event.status === "live"
+                                ? `${theme.colors.neonPink}55`
+                                : `${theme.colors.neonCyan}44`,
+                          }}
+                        >
+                          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
+                            <View style={{ flex: 1, minWidth: 0 }}>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                                <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 14 }} numberOfLines={1}>
+                                  {event.djName}
+                                </Text>
+                                <Badge tone={event.status === "live" ? "pink" : "cyan"}>
+                                  {event.status === "live" ? "LIVE" : "UPCOMING"}
+                                </Badge>
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                                <Calendar size={12} color={theme.colors.mutedForeground} />
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{event.date}</Text>
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>•</Text>
+                                <Clock size={12} color={theme.colors.mutedForeground} />
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{event.time}</Text>
+                              </View>
+                              <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                                <Music size={12} color={theme.colors.mutedForeground} />
+                                <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }} numberOfLines={1}>
+                                  {event.genres}
+                                </Text>
+                              </View>
+                            </View>
+                          </View>
+                        </Card>
+                      </Animated.View>
+                    ))}
+                  </View>
+                </Card>
+              </Animated.View>
+            ) : null}
           </>
         ) : (
           <>
@@ -420,10 +469,13 @@ export function GuestHomeTab() {
                               tone="green"
                               style={{ borderRadius: 12, minHeight: 44 }}
                               onPress={() => handleBookNow(item.data)}
+                              disabled={bookedTableIds.has(item.data.id)}
                             >
                               <View style={styles.rowCenter}>
                                 <Check size={16} color="#fff" />
-                                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>BOOK NOW</Text>
+                                <Text style={{ color: "#fff", fontFamily: "Inter_700Bold", fontSize: 12 }}>
+                                  {bookedTableIds.has(item.data.id) ? "BOOKED" : "BOOK NOW"}
+                                </Text>
                               </View>
                             </Button>
                           </View>
@@ -436,45 +488,63 @@ export function GuestHomeTab() {
             </Animated.View>
           </>
         )}
+      </View>
+    </ScrollView>
 
-        <Animated.View entering={FadeInDown.delay(200).duration(300).springify()} style={{ marginTop: 4 }}>
-          <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 14, marginBottom: 10 }}>
-            Events
-          </Text>
-          <View style={{ gap: 8 }}>
-            {homeEvents.map((evt, idx) => (
-              <Animated.View key={evt.id} entering={FadeInDown.delay(220 + idx * 40).duration(280).springify()}>
-                <Card variant="glass" style={{ padding: 12, borderColor: `${theme.colors.neonCyan}33` }}>
-                  <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
-                    <View style={{ width: 40, alignItems: "center", justifyContent: "center" }}>
-                      <Calendar size={18} color={theme.colors.neonCyan} />
-                    </View>
+      {/* All Vibe Events sheet (guest) */}
+      <ModalSheet open={showAllVibeEventsSheet} onClose={() => setShowAllVibeEventsSheet(false)} maxHeightPct={0.9} showHeader={false}>
+        <View style={{ flex: 1, paddingHorizontal: 16, paddingBottom: 24 }}>
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16, paddingTop: 12 }}>
+            <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 18 }}>All Vibe Events</Text>
+            <Pressable onPress={() => setShowAllVibeEventsSheet(false)} style={{ padding: 8 }}>
+              <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold" }}>Close</Text>
+            </Pressable>
+          </View>
+          <ScrollView style={{ flex: 1 }} contentContainerStyle={{ paddingBottom: 24 }} showsVerticalScrollIndicator={false}>
+            <View style={{ gap: 10 }}>
+              {sortedVibeEvents.map((event) => (
+                <Card
+                  key={event.id}
+                  variant="glass"
+                  style={{
+                    padding: 12,
+                    borderColor:
+                      event.status === "live"
+                        ? `${theme.colors.neonPink}55`
+                        : `${theme.colors.neonCyan}44`,
+                  }}
+                >
+                  <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "flex-start", gap: 12 }}>
                     <View style={{ flex: 1, minWidth: 0 }}>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
-                        <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 14 }} numberOfLines={1}>
-                          {evt.title}
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                        <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 14 }} numberOfLines={1}>
+                          {event.djName}
                         </Text>
-                        {evt.tag && (
-                          <Badge tone={evt.tag === "TONIGHT" ? "pink" : evt.tag === "LIVE" ? "green" : "cyan"}>
-                            {evt.tag}
-                          </Badge>
-                        )}
+                        <Badge tone={event.status === "live" ? "pink" : "cyan"}>
+                          {event.status === "live" ? "LIVE" : "UPCOMING"}
+                        </Badge>
                       </View>
-                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginBottom: 4 }}>
+                        <Calendar size={12} color={theme.colors.mutedForeground} />
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{event.date}</Text>
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>•</Text>
                         <Clock size={12} color={theme.colors.mutedForeground} />
-                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 12 }}>
-                          {evt.dateLabel} · {evt.time} · {evt.venue}
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }}>{event.time}</Text>
+                      </View>
+                      <View style={{ flexDirection: "row", alignItems: "center", gap: 6 }}>
+                        <Music size={12} color={theme.colors.mutedForeground} />
+                        <Text style={{ color: theme.colors.mutedForeground, fontSize: 11 }} numberOfLines={1}>
+                          {event.genres}
                         </Text>
                       </View>
                     </View>
                   </View>
                 </Card>
-              </Animated.View>
-            ))}
-          </View>
-        </Animated.View>
-      </View>
-    </ScrollView>
+              ))}
+            </View>
+          </ScrollView>
+        </View>
+      </ModalSheet>
 
       <ModalSheet
         open={biddingTable != null}

@@ -13,6 +13,8 @@ export interface ChatItem {
   seen: boolean
   unread: number
   group: boolean
+  /** For 1:1 chats, the other participant's profile id (for mutual-contact check). */
+  otherParticipantProfileId?: string
 }
 
 export interface ChatMessageItem {
@@ -20,6 +22,7 @@ export interface ChatMessageItem {
   msg: string
   time: string
   me: boolean
+  sender_id?: string
   sender?: string
   role?: string
 }
@@ -35,6 +38,7 @@ function apiChatToItem(r: Record<string, unknown>): ChatItem {
     seen: (r.seen as boolean) ?? (r.unread as number) === 0,
     unread: (r.unread as number) ?? 0,
     group: (r.isGroup as boolean) ?? false,
+    otherParticipantProfileId: r.otherParticipantProfileId as string | undefined,
   }
 }
 
@@ -44,9 +48,21 @@ function apiMessageToItem(r: Record<string, unknown>): ChatMessageItem {
     msg: (r.msg as string) ?? "",
     time: (r.time as string) ?? new Date().toISOString(),
     me: (r.me as boolean) ?? false,
+    sender_id: (r.sender_id as string) ?? undefined,
     sender: r.sender as string | undefined,
     role: r.role as string | undefined,
   }
+}
+
+/** Realtime payload row for public.chat_messages */
+interface RealtimeChatMessageRow {
+  id: string
+  chat_id: string
+  msg: string
+  created_at: string
+  sender_id?: string
+  sender?: string
+  role?: string
 }
 
 const DEFAULT_CHATS: ChatItem[] = [
@@ -84,6 +100,7 @@ interface ChatsContextValue {
   deleteChat: (chatId: string) => Promise<void>
   updateMessage: (chatId: string, messageId: string, patch: ChatMessageUpdate) => Promise<void>
   deleteMessage: (chatId: string, messageId: string) => Promise<void>
+  clearChatHistory: (chatId: string) => Promise<void>
   markChatRead: (chatId: string) => Promise<void>
   refetchChats: () => Promise<void>
   isApiConnected: boolean
@@ -135,9 +152,9 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     if (connected && hasBackendToken) refetchChats()
   }, [connected, hasBackendToken, refetchChats])
 
-  // Realtime: new messages for chats the user is in
+  // Supabase Realtime: sync chat_messages (INSERT, UPDATE, DELETE) so all clients stay in sync
   React.useEffect(() => {
-    if (!connected || chats.length === 0 || !isSupabaseConfigured()) return
+    if (!connected || !isSupabaseConfigured()) return
     const chatIds = new Set(chats.map((c) => c.id))
     const channel = supabase
       .channel("chat_messages_realtime")
@@ -145,8 +162,8 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "chat_messages" },
         (payload) => {
-          const row = payload.new as { id: string; chat_id: string; msg: string; created_at: string; sender_id?: string; sender?: string; role?: string }
-          if (!chatIds.has(row.chat_id)) return
+          const row = payload.new as RealtimeChatMessageRow
+          if (row.chat_id && !chatIds.has(row.chat_id)) return
           const userId = currentUserIdRef.current
           const me = userId != null && row.sender_id != null ? row.sender_id === userId : (row as { me?: boolean }).me ?? false
           const item = apiMessageToItem({
@@ -154,12 +171,68 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
             msg: row.msg,
             time: row.created_at,
             me,
+            sender_id: row.sender_id,
+            sender: row.sender,
+            role: row.role,
+          })
+          setMessagesByChatId((prev) => {
+            const list = prev[row.chat_id] ?? []
+            if (list.some((m) => m.id === item.id)) return prev
+            return { ...prev, [row.chat_id]: [...list, item] }
+          })
+          setTotalByChatId((prev) => ({ ...prev, [row.chat_id]: (prev[row.chat_id] ?? 0) + 1 }))
+          setChats((prev) => {
+            const chat = prev.find((c) => c.id === row.chat_id)
+            if (!chat) return prev
+            const isFromOther = userId != null && row.sender_id != null && row.sender_id !== userId
+            const updated: ChatItem = {
+              ...chat,
+              lastMsg: row.msg,
+              time: row.created_at,
+              unread: isFromOther ? chat.unread + 1 : chat.unread,
+              seen: isFromOther ? false : chat.seen,
+            }
+            return [updated, ...prev.filter((c) => c.id !== row.chat_id)]
+          })
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "chat_messages" },
+        (payload) => {
+          const row = payload.new as RealtimeChatMessageRow
+          if (!row.chat_id || !chatIds.has(row.chat_id)) return
+          const userId = currentUserIdRef.current
+          const me = userId != null && row.sender_id != null ? row.sender_id === userId : (row as { me?: boolean }).me ?? false
+          const item = apiMessageToItem({
+            id: row.id,
+            msg: row.msg,
+            time: row.created_at,
+            me,
+            sender_id: row.sender_id,
             sender: row.sender,
             role: row.role,
           })
           setMessagesByChatId((prev) => ({
             ...prev,
-            [row.chat_id]: [...(prev[row.chat_id] ?? []), item],
+            [row.chat_id]: (prev[row.chat_id] ?? []).map((m) => (m.id === row.id ? item : m)),
+          }))
+        }
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "chat_messages" },
+        (payload) => {
+          const old = payload.old as { id: string; chat_id: string }
+          if (!old?.chat_id || !chatIds.has(old.chat_id)) return
+          const msgId = old.id
+          setMessagesByChatId((prev) => {
+            const list = (prev[old.chat_id] ?? []).filter((m) => m.id !== msgId)
+            return { ...prev, [old.chat_id]: list }
+          })
+          setTotalByChatId((prev) => ({
+            ...prev,
+            [old.chat_id]: Math.max(0, (prev[old.chat_id] ?? 1) - 1),
           }))
           refetchChats()
         }
@@ -394,6 +467,33 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
     [connected, fetchMessages]
   )
 
+  const clearChatHistory = React.useCallback(
+    async (chatId: string) => {
+      // Optimistically clear local messages for this chat
+      setMessagesByChatId((prev) => {
+        if (!prev[chatId]) return prev
+        const next = { ...prev }
+        delete next[chatId]
+        return next
+      })
+      setTotalByChatId((prev) => {
+        if (prev[chatId] == null) return prev
+        const next = { ...prev }
+        delete next[chatId]
+        return next
+      })
+      if (connected) {
+        try {
+          await api.delete(`/api/chats/${chatId}/messages`)
+        } catch {
+          // If API fails, try to refetch messages so UI stays consistent
+          fetchMessages(chatId)
+        }
+      }
+    },
+    [connected, fetchMessages]
+  )
+
   const value = React.useMemo(
     () => ({
       chats,
@@ -408,6 +508,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       deleteChat,
       updateMessage,
       deleteMessage,
+      clearChatHistory,
       markChatRead,
       refetchChats,
       isApiConnected: connected,
@@ -426,6 +527,7 @@ export function ChatsProvider({ children }: { children: React.ReactNode }) {
       deleteChat,
       updateMessage,
       deleteMessage,
+      clearChatHistory,
       markChatRead,
       refetchChats,
       connected,

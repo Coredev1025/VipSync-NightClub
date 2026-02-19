@@ -8,17 +8,27 @@ router.use(authMiddleware)
 
 const CreateContactSchema = z.object({
   name: z.string().min(1),
+  phone: z.string().optional(),
   avatar: z.string().optional(),
   status: z.string().optional(),
+  profileId: z.string().optional(),
 })
-const UpdateContactSchema = CreateContactSchema.partial()
+const UpdateContactSchema = z.object({
+  name: z.string().min(1).optional(),
+  phone: z.string().optional(),
+  avatar: z.string().optional(),
+  status: z.string().optional(),
+  profileId: z.string().optional(),
+})
 
 function rowToContact(r) {
   return {
     id: r.id,
     name: r.name,
+    phone: r.phone ?? undefined,
     avatar: r.avatar ?? undefined,
     status: r.status ?? "active",
+    profileId: r.profile_id ?? undefined,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   }
@@ -58,8 +68,10 @@ router.post("/", async (req, res) => {
     .insert({
       owner_id: userId,
       name: parsed.data.name,
+      phone: parsed.data.phone ?? null,
       avatar: parsed.data.avatar ?? null,
       status: parsed.data.status ?? "active",
+      profile_id: parsed.data.profileId ?? null,
     })
     .select()
     .single()
@@ -83,8 +95,10 @@ router.patch("/:id", async (req, res) => {
   }
   const updates = { updated_at: new Date().toISOString() }
   if (parsed.data.name != null) updates.name = parsed.data.name
+  if (parsed.data.phone !== undefined) updates.phone = parsed.data.phone ?? null
   if (parsed.data.avatar != null) updates.avatar = parsed.data.avatar
   if (parsed.data.status != null) updates.status = parsed.data.status
+  if (parsed.data.profileId !== undefined) updates.profile_id = parsed.data.profileId ?? null
 
   const { data, error } = await supabase
     .from("contacts")
@@ -116,6 +130,37 @@ router.delete("/:id", async (req, res) => {
     return
   }
   res.status(204).send()
+})
+
+/** GET /api/contacts/can-chat-with/:profileId — true only if both users have each other as contacts (mutual). */
+router.get("/can-chat-with/:profileId", async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
+  const { profileId } = req.params
+  if (!profileId) {
+    res.status(400).json({ error: "profileId required" })
+    return
+  }
+
+  const { data: myContact } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("owner_id", userId)
+    .eq("profile_id", profileId)
+    .maybeSingle()
+
+  const { data: theirContact } = await supabase
+    .from("contacts")
+    .select("id")
+    .eq("owner_id", profileId)
+    .eq("profile_id", userId)
+    .maybeSingle()
+
+  const allowed = Boolean(myContact && theirContact)
+  res.json({ allowed })
 })
 
 export default router

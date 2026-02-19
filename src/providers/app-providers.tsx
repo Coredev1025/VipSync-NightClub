@@ -21,6 +21,7 @@ import {
 
 import { ApiAuthContext, useApiAuth } from "@/contexts/api-auth-context"
 import { BottlesProvider } from "@/contexts/bottles-context"
+import { ContactsProvider } from "@/contexts/contacts-context"
 import { ChatsProvider } from "@/contexts/chats-context"
 import { LiveFeedProvider } from "@/contexts/live-feed-context"
 import { MenuProvider } from "@/contexts/menu-context"
@@ -208,6 +209,7 @@ export function AppProviders({ children }: AppProvidersProps) {
               <MenuProvider>
               <TablesProvider>
                 <ChatsProvider>
+                  <ContactsProvider>
                   <VibeProvider>
                     <LiveFeedProvider>
                       <ToastProvider>
@@ -217,6 +219,7 @@ export function AppProviders({ children }: AppProvidersProps) {
                       </ToastProvider>
                     </LiveFeedProvider>
                   </VibeProvider>
+                  </ContactsProvider>
                 </ChatsProvider>
               </TablesProvider>
               </MenuProvider>

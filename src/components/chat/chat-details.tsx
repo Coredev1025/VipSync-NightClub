@@ -335,7 +335,7 @@ export function ChatDetails({
                 >
                   {formatMessageTime(msg.time)}
                 </Text>
-                {msg.isMe && msg.status ? (
+                {!msg.isMe && msg.status ? (
                   msg.status === "read" ? (
                     <CheckCheck size={14} color={theme.colors.neonCyan} />
                   ) : (

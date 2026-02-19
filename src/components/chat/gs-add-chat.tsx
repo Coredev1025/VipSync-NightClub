@@ -2,6 +2,7 @@ import { Image } from "expo-image"
 import { ArrowLeft, MoreVertical, UserPlus, Users } from "lucide-react-native"
 import * as React from "react"
 import {
+    Alert,
     FlatList,
     Pressable,
     Text,
@@ -18,12 +19,15 @@ interface Contact {
   phone?: string
   avatar?: string
   status?: string
+  profileId?: string
 }
 
 interface AddChatProps {
   contacts?: Contact[]
   onBack: () => void
   onContactPress: (contact: Contact) => void
+  onEditContact?: (contact: Contact) => void
+  onDeleteContact?: (contact: Contact) => void
   onNewGroupPress?: () => void
   onNewContactPress?: () => void
 }
@@ -114,6 +118,8 @@ export function GSAddChat({
   contacts = [],
   onBack,
   onContactPress,
+  onEditContact,
+  onDeleteContact,
   onNewGroupPress,
   onNewContactPress,
 }: AddChatProps) {
@@ -123,6 +129,26 @@ export function GSAddChat({
   const contactList = contacts
 
   const styles = getAddChatStyles(mode, theme)
+
+  const handleContactLongPress = (item: Contact) => {
+    if (!onEditContact && !onDeleteContact) return
+    const buttons: Array<{ text: string; onPress?: () => void; style?: "default" | "cancel" | "destructive" }> = []
+    if (onEditContact) buttons.push({ text: "Edit", onPress: () => onEditContact(item) })
+    if (onDeleteContact) {
+      buttons.push({
+        text: "Delete",
+        style: "destructive",
+        onPress: () => {
+          Alert.alert("Delete contact", `Remove ${item.name} from your contacts?`, [
+            { text: "Cancel", style: "cancel" },
+            { text: "Delete", style: "destructive", onPress: () => onDeleteContact(item) },
+          ])
+        },
+      })
+    }
+    buttons.push({ text: "Cancel", style: "cancel" })
+    Alert.alert(item.name, "Edit or remove this contact", buttons)
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -154,6 +180,7 @@ export function GSAddChat({
             <ContactItem
               item={item}
               onPress={() => onContactPress(item)}
+              onLongPress={(onEditContact || onDeleteContact) ? () => handleContactLongPress(item) : undefined}
               styles={styles}
             />
           )}
@@ -214,17 +241,19 @@ function getContactDisplayName(item: Contact): string {
 function ContactItem({
   item,
   onPress,
+  onLongPress,
   styles,
 }: {
   item: Contact
   onPress: () => void
+  onLongPress?: () => void
   styles: ReturnType<typeof getAddChatStyles>
 }) {
   const displayName = getContactDisplayName(item)
   const showStatusSubtitle = item.status && item.name?.trim()
 
   return (
-    <Pressable onPress={onPress} style={styles.contactContainer}>
+    <Pressable onPress={onPress} onLongPress={onLongPress} style={styles.contactContainer}>
       <Image
         source={{ uri: item.avatar || "https://i.pravatar.cc/320?u=default" }}
         style={styles.contactAvatar}

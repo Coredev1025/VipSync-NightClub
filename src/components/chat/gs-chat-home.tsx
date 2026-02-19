@@ -22,6 +22,8 @@ export interface ChatItem {
   seen: boolean
   unread: number
   group: boolean
+  /** For 1:1 chats, the other participant's profile id (for mutual-contact check). */
+  otherParticipantProfileId?: string
 }
 
 interface ChatHomeProps {

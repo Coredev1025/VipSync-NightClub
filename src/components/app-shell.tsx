@@ -227,7 +227,7 @@ export function AppShell({ onLogout, userRole }: AppShellProps) {
         return (
           <ProfileTab
             proMode
-            showProStats={userRole !== "owner"}
+            showProStats={userRole === "promoter" || userRole === "door"}
             onLogout={onLogout}
             canManageClubSettings={userRole === "owner" || userRole === "manager"}
           />

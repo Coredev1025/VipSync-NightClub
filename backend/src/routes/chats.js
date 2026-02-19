@@ -35,7 +35,7 @@ const UpdateMessageSchema = z.object({
   role: z.string().optional(),
 })
 
-function chatRowToItem(r, lastMessage, unread = 0) {
+function chatRowToItem(r, lastMessage, unread = 0, otherParticipantProfileId = null) {
   return {
     id: r.id,
     name: r.name ?? "Chat",
@@ -45,6 +45,7 @@ function chatRowToItem(r, lastMessage, unread = 0) {
     unread,
     isGroup: r.is_group ?? false,
     seen: unread === 0,
+    otherParticipantProfileId: otherParticipantProfileId ?? undefined,
   }
 }
 
@@ -148,11 +149,23 @@ router.get("/", async (req, res) => {
       unread = count ?? 0
     }
 
+    let otherParticipantProfileId = null
+    if (!c.is_group) {
+      const { data: participants } = await supabase
+        .from("chat_participants")
+        .select("profile_id")
+        .eq("chat_id", c.id)
+      const profileIds = (participants ?? []).map((p) => p.profile_id).filter(Boolean)
+      const other = profileIds.find((id) => id !== userId)
+      if (other) otherParticipantProfileId = other
+    }
+
     result.push(
       chatRowToItem(
         { ...c, is_group: c.is_group },
         last ? { msg: last.msg, time: last.created_at } : undefined,
-        unread
+        unread,
+        otherParticipantProfileId
       )
     )
   }
@@ -213,7 +226,7 @@ router.get("/:id/messages", async (req, res) => {
 
   const { data: rows, error } = await supabase
     .from("chat_messages")
-    .select("id, msg, created_at, me, sender, role")
+    .select("id, msg, created_at, sender_id, sender, role, me")
     .eq("chat_id", req.params.id)
     .order("created_at", { ascending: false })
     .range(offset, offset + limit - 1)
@@ -223,14 +236,18 @@ router.get("/:id/messages", async (req, res) => {
     return
   }
   const ordered = (rows ?? []).reverse()
-  const messages = ordered.map((r) => ({
-    id: r.id,
-    msg: r.msg,
-    time: r.created_at,
-    me: r.me ?? false,
-    sender: r.sender ?? undefined,
-    role: r.role ?? undefined,
-  }))
+  const messages = ordered.map((r) => {
+    const isMe = r.sender_id ? r.sender_id === userId : r.me ?? false
+    return {
+      id: r.id,
+      msg: r.msg,
+      time: r.created_at,
+      me: isMe,
+      sender_id: r.sender_id ?? undefined,
+      sender: r.sender ?? undefined,
+      role: r.role ?? undefined,
+    }
+  })
 
   const { count } = await supabase
     .from("chat_messages")
@@ -284,6 +301,11 @@ router.post("/:id/messages", async (req, res) => {
 
 // PATCH /api/chats/:id/messages/:msgId — requires participant
 router.patch("/:id/messages/:msgId", async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
   const access = await ensureCanAccessChat(req, res)
   if (!access) return
 
@@ -303,6 +325,7 @@ router.patch("/:id/messages/:msgId", async (req, res) => {
     .update(updates)
     .eq("id", req.params.msgId)
     .eq("chat_id", req.params.id)
+    .eq("sender_id", userId)
     .select()
     .single()
   if (error) {
@@ -314,14 +337,45 @@ router.patch("/:id/messages/:msgId", async (req, res) => {
     id: data.id,
     msg: data.msg,
     time: data.created_at,
-    me: data.me,
+    // Keep "me" flag consistent with GET /messages so edited messages stay on the correct side.
+    me: data.sender_id ? data.sender_id === userId : data.me ?? false,
+    sender_id: data.sender_id ?? undefined,
     sender: data.sender ?? undefined,
     role: data.role ?? undefined,
   })
 })
 
+// DELETE /api/chats/:id/messages — delete all messages in a chat; requires participant
+router.delete("/:id/messages", async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
+  const access = await ensureCanAccessChat(req, res)
+  if (!access) return
+
+  const { error } = await supabase
+    .from("chat_messages")
+    .delete()
+    .eq("chat_id", req.params.id)
+
+  if (error) {
+    res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
+    return
+  }
+
+  await supabase.from("chats").update({ updated_at: new Date().toISOString() }).eq("id", req.params.id)
+  res.status(204).send()
+})
+
 // DELETE /api/chats/:id/messages/:msgId — requires participant
 router.delete("/:id/messages/:msgId", async (req, res) => {
+  const userId = req.user?.sub
+  if (!userId) {
+    res.status(401).json({ error: "Unauthorized" })
+    return
+  }
   const access = await ensureCanAccessChat(req, res)
   if (!access) return
 
@@ -330,6 +384,7 @@ router.delete("/:id/messages/:msgId", async (req, res) => {
     .delete()
     .eq("id", req.params.msgId)
     .eq("chat_id", req.params.id)
+    .eq("sender_id", userId)
   if (error) {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
     return
