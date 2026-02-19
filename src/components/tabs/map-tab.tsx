@@ -155,7 +155,7 @@ const canEditMapTables = (role: MapTabUserRole | undefined) => role !== "door"
 export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOrder, userRole = "manager" }: MapTabProps = {}) {
   const { theme } = useTheme()
 
-  const { tables, setTables, updateTable } = useTables()
+  const { tables, setTables, updateTable, refetch } = useTables()
   const [promoterOptions, setPromoterOptions] = React.useState<StaffMember[]>([])
   const [bottleGirlOptions, setBottleGirlOptions] = React.useState<StaffMember[]>([])
   React.useEffect(() => {
@@ -870,7 +870,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
           <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Table number</Text>
           <Input
             value={newGuestTable}
-            onChangeText={setNewGuestTable}
+            onChangeText={(text) => setNewGuestTable(text.replace(/[^0-9]/g, ""))}
             placeholder="e.g. 5"
             keyboardType="number-pad"
             containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
@@ -880,7 +880,7 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
           <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Extra guests</Text>
           <Input
             value={newGuestExtra}
-            onChangeText={setNewGuestExtra}
+            onChangeText={(text) => setNewGuestExtra(text.replace(/[^0-9]/g, ""))}
             placeholder="0"
             keyboardType="number-pad"
             containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 20 }]}
@@ -921,8 +921,10 @@ export function MapTab({ guestMode = false, pendingChatOrder, onConsumePendingOr
             onGuestsChange={handleTableGuestsChange}
             onEditTable={effectiveOnEditTable}
             onUpdateTable={effectiveOnUpdateTable}
+            onRefetchTables={refetch}
             canEditTableGirl={canEditTableGirl(userRole)}
             canEditPromoter={canEditPromoter(userRole)}
+            canEditVip={canEditMapTables(userRole)}
             onAddBottle={
               effectiveOnUpdateTable
                 ? (itemsText, pendingAmount) => {
@@ -2045,6 +2047,28 @@ function TableInfoSheetGuest({ table, onClose }: { table: Table; onClose: () => 
           <X size={18} color={theme.colors.foreground} />
         </HapticPressable>
       </View>
+      {table.vipBidding ? (
+        <Card variant="glass" style={{ padding: 12, marginBottom: 12, borderColor: `${theme.colors.neonCyan}55` }}>
+          <Text style={{ color: theme.colors.neonCyan, fontSize: 11, fontFamily: "Orbitron_700Bold", marginBottom: 6 }}>BIDDING (USER)</Text>
+          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>{table.vipBidding.vipName}</Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            Current bid: ${table.vipBidding.currentBid.toLocaleString()} · Leader: {table.vipBidding.leader || "—"}
+          </Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 2 }}>
+            Next bid: ${table.vipBidding.nextBidAmount.toLocaleString()}
+          </Text>
+        </Card>
+      ) : null}
+      {table.vipBooking ? (
+        <Card variant="glass" style={{ padding: 12, marginBottom: 12, borderColor: `${theme.colors.neonGreen}55` }}>
+          <Text style={{ color: theme.colors.neonGreen, fontSize: 11, fontFamily: "Orbitron_700Bold", marginBottom: 6 }}>BOOKING (USER)</Text>
+          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>{table.vipBooking.vipName}</Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            Min spend: ${table.vipBooking.minSpend.toLocaleString()}
+            {table.status === "booked" && table.guestName ? ` · Booked by ${table.guestName}` : ""}
+          </Text>
+        </Card>
+      ) : null}
       {!table.isDjBooth ? (
         <Card variant="glass" style={{ padding: 12, borderColor: `${statusColor}44` }}>
           <View style={{ flexDirection: "row", alignItems: "center", gap: 10 }}>
@@ -2306,8 +2330,10 @@ function TableDetailSheet({
   onEditTable,
   onAddBottle,
   onUpdateTable,
+  onRefetchTables,
   canEditTableGirl = true,
   canEditPromoter = false,
+  canEditVip = false,
 }: {
   table: Table
   promoterOptions?: StaffMember[]
@@ -2318,10 +2344,13 @@ function TableDetailSheet({
   onEditTable?: () => void
   onAddBottle?: (itemsText: string, pendingAmount?: number) => void
   onUpdateTable?: (tableId: string, updates: Partial<Table>) => void
+  onRefetchTables?: () => void
   /** Manager/owner see and edit table girl; promoter cannot edit promoter. */
   canEditTableGirl?: boolean
   /** Manager/owner can edit promoter; promoter and door cannot. Default false so promoter never sees it. */
   canEditPromoter?: boolean
+  /** Manager can create/edit/delete VIP bid or booking table. */
+  canEditVip?: boolean
 }) {
   const { theme } = useTheme()
   const { bottles } = useBottles()
@@ -2337,6 +2366,19 @@ function TableDetailSheet({
   const [djSetStartTime, setDjSetStartTime] = React.useState(() => parseSetTimeRange(table.djSetTime ?? "").start)
   const [djSetEndTime, setDjSetEndTime] = React.useState(() => parseSetTimeRange(table.djSetTime ?? "").end)
   const [showDjSetTimePicker, setShowDjSetTimePicker] = React.useState<"start" | "end" | null>(null)
+  const [showVipSheet, setShowVipSheet] = React.useState(false)
+  const [vipSheetMode, setVipSheetMode] = React.useState<"create" | "edit">("create")
+  const [vipSheetType, setVipSheetType] = React.useState<"bidding" | "booking">("bidding")
+  const [vipForm, setVipForm] = React.useState({
+    name: "",
+    capacity: 6,
+    currentBid: 0,
+    leader: "",
+    nextBidAmount: 50,
+    minSpend: 0,
+    description: "",
+  })
+  const [vipSaving, setVipSaving] = React.useState(false)
 
   return (
     <View style={{ paddingHorizontal: 16, paddingBottom: 14, flex: 1 }}>
@@ -2362,6 +2404,140 @@ function TableDetailSheet({
           <X size={18} color={theme.colors.foreground} />
         </HapticPressable>
       </View>
+
+      {table.vipBidding ? (
+        <Card variant="glass" style={{ padding: 12, marginBottom: 12, borderColor: `${theme.colors.neonCyan}55` }}>
+          <Text style={{ color: theme.colors.neonCyan, fontSize: 11, fontFamily: "Orbitron_700Bold", marginBottom: 6 }}>BIDDING (USER)</Text>
+          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>{table.vipBidding.vipName}</Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            Current bid: ${table.vipBidding.currentBid.toLocaleString()} · Leader: {table.vipBidding.leader || "—"}
+          </Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 2 }}>
+            Next bid: ${table.vipBidding.nextBidAmount.toLocaleString()}
+          </Text>
+        </Card>
+      ) : null}
+      {table.vipBooking ? (
+        <Card variant="glass" style={{ padding: 12, marginBottom: 12, borderColor: `${theme.colors.neonGreen}55` }}>
+          <Text style={{ color: theme.colors.neonGreen, fontSize: 11, fontFamily: "Orbitron_700Bold", marginBottom: 6 }}>BOOKING (USER)</Text>
+          <Text style={{ color: theme.colors.foreground, fontSize: 13 }}>{table.vipBooking.vipName}</Text>
+          <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginTop: 4 }}>
+            Min spend: ${table.vipBooking.minSpend.toLocaleString()}
+            {table.status === "booked" && table.guestName ? ` · Booked by ${table.guestName}` : ""}
+          </Text>
+        </Card>
+      ) : null}
+
+      {canEditVip && !table.isDjBooth ? (
+        <View style={{ flexDirection: "row", gap: 8, marginBottom: 12, flexWrap: "wrap" }}>
+          {table.vipTableId ? (
+            <>
+              <HapticPressable
+                onPress={() => {
+                  setVipSheetMode("edit")
+                  setVipSheetType(table.vipType ?? "bidding")
+                  setVipForm({
+                    name: table.vipBidding?.vipName ?? table.vipBooking?.vipName ?? "",
+                    capacity: table.capacity,
+                    currentBid: table.vipBidding?.currentBid ?? 0,
+                    leader: table.vipBidding?.leader ?? "",
+                    nextBidAmount: table.vipBidding?.nextBidAmount ?? 50,
+                    minSpend: table.vipBooking?.minSpend ?? 0,
+                    description: "",
+                  })
+                  setShowVipSheet(true)
+                }}
+                neonBorder
+                borderColor={`${theme.colors.neonCyan}AA`}
+                style={[styles.editRoleBtn, { borderColor: theme.colors.neonCyan, backgroundColor: `${theme.colors.neonCyan}18` }]}
+              >
+                <Pencil size={16} color={theme.colors.neonCyan} />
+                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>
+                  Edit {table.vipType === "booking" ? "booking" : "bid"}
+                </Text>
+              </HapticPressable>
+              <HapticPressable
+                onPress={() => {
+                  Alert.alert(
+                    "Remove VIP table",
+                    "This will unlink the bid/booking from this table. Guests will no longer see it. Continue?",
+                    [
+                      { text: "Cancel", style: "cancel" },
+                      {
+                        text: "Remove",
+                        style: "destructive",
+                        onPress: async () => {
+                          if (!table.vipTableId || !onRefetchTables) return
+                          try {
+                            await api.delete(`/api/vip-tables/${table.vipTableId}`)
+                            onRefetchTables()
+                            onClose()
+                          } catch {
+                            // toast or leave sheet open
+                          }
+                        },
+                      },
+                    ]
+                  )
+                }}
+                neonBorder
+                borderColor="#ff3b30AA"
+                style={[styles.editRoleBtn, { borderColor: "#ff3b30", backgroundColor: "rgba(255,59,48,0.12)" }]}
+              >
+                <Trash2 size={16} color="#ff3b30" />
+                <Text style={{ color: "#ff3b30", fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Remove bid/booking</Text>
+              </HapticPressable>
+            </>
+          ) : (
+            <>
+              <HapticPressable
+                onPress={() => {
+                  setVipSheetMode("create")
+                  setVipSheetType("bidding")
+                  setVipForm({
+                    name: `Table ${table.number}`,
+                    capacity: table.capacity,
+                    currentBid: 0,
+                    leader: "",
+                    nextBidAmount: 50,
+                    minSpend: 0,
+                    description: "",
+                  })
+                  setShowVipSheet(true)
+                }}
+                neonBorder
+                borderColor={`${theme.colors.neonCyan}AA`}
+                style={[styles.editRoleBtn, { borderColor: theme.colors.neonCyan, backgroundColor: `${theme.colors.neonCyan}18` }]}
+              >
+                <Zap size={16} color={theme.colors.neonCyan} />
+                <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Add bid table</Text>
+              </HapticPressable>
+              <HapticPressable
+                onPress={() => {
+                  setVipSheetMode("create")
+                  setVipSheetType("booking")
+                  setVipForm({
+                    name: `Table ${table.number}`,
+                    capacity: table.capacity,
+                    currentBid: 0,
+                    leader: "",
+                    nextBidAmount: 50,
+                    minSpend: 500,
+                    description: "",
+                  })
+                  setShowVipSheet(true)
+                }}
+                neonBorder
+                borderColor={`${theme.colors.neonGreen}AA`}
+                style={[styles.editRoleBtn, { borderColor: theme.colors.neonGreen, backgroundColor: `${theme.colors.neonGreen}18` }]}
+              >
+                <CheckCircle size={16} color={theme.colors.neonGreen} />
+                <Text style={{ color: theme.colors.neonGreen, fontFamily: "Inter_600SemiBold", fontSize: 13 }}>Add booking table</Text>
+              </HapticPressable>
+            </>
+          )}
+        </View>
+      ) : null}
 
       {table.isDjBooth ? (
         <>
@@ -2728,6 +2904,142 @@ function TableDetailSheet({
           })}
         </View>
       </ModalSheet>
+      <ModalSheet open={showVipSheet} onClose={() => setShowVipSheet(false)} maxHeightPct={1} showHeader={false}>
+        <ScrollView style={{ paddingHorizontal: 16, paddingBottom: 24 }} keyboardShouldPersistTaps="handled">
+          <View style={{ flexDirection: "row", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
+            <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_700Bold", fontSize: 18 }}>
+              {vipSheetMode === "edit" ? `Edit ${vipSheetType === "bidding" ? "bid" : "booking"} table` : `Add ${vipSheetType === "bidding" ? "bid" : "booking"} table`}
+            </Text>
+            <HapticPressable onPress={() => setShowVipSheet(false)} style={[styles.closeBtn, { backgroundColor: theme.colors.muted }]}>
+              <X size={18} color={theme.colors.foreground} />
+            </HapticPressable>
+          </View>
+          <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Name</Text>
+          <Input
+            value={vipForm.name}
+            onChangeText={(t) => setVipForm((f) => ({ ...f, name: t }))}
+            placeholder="e.g. Jade Booth"
+            containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+            style={{ color: theme.colors.foreground }}
+            placeholderTextColor={theme.colors.mutedForeground}
+          />
+          <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Capacity</Text>
+          <Input
+            value={String(vipForm.capacity)}
+            onChangeText={(t) => setVipForm((f) => ({ ...f, capacity: Math.max(1, parseInt(t, 10) || 1) }))}
+            keyboardType="number-pad"
+            placeholder="6"
+            containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+            style={{ color: theme.colors.foreground }}
+            placeholderTextColor={theme.colors.mutedForeground}
+          />
+          {vipSheetType === "bidding" ? (
+            <>
+              <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Current bid ($)</Text>
+              <Input
+                value={String(vipForm.currentBid)}
+                onChangeText={(t) => setVipForm((f) => ({ ...f, currentBid: Math.max(0, parseFloat(t) || 0) }))}
+                keyboardType="number-pad"
+                placeholder="0"
+                containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+                style={{ color: theme.colors.foreground }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+              <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Leader</Text>
+              <Input
+                value={vipForm.leader}
+                onChangeText={(t) => setVipForm((f) => ({ ...f, leader: t }))}
+                placeholder="Guest name or handle"
+                containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+                style={{ color: theme.colors.foreground }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+              <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Next bid amount ($)</Text>
+              <Input
+                value={String(vipForm.nextBidAmount)}
+                onChangeText={(t) => setVipForm((f) => ({ ...f, nextBidAmount: Math.max(0, parseFloat(t) || 0) }))}
+                keyboardType="number-pad"
+                placeholder="50"
+                containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+                style={{ color: theme.colors.foreground }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+            </>
+          ) : (
+            <>
+              <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Min spend ($)</Text>
+              <Input
+                value={String(vipForm.minSpend)}
+                onChangeText={(t) => setVipForm((f) => ({ ...f, minSpend: Math.max(0, parseFloat(t) || 0) }))}
+                keyboardType="number-pad"
+                placeholder="500"
+                containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+                style={{ color: theme.colors.foreground }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+              <Text style={[styles.editLabel, { color: theme.colors.mutedForeground, marginBottom: 6 }]}>Description (optional)</Text>
+              <Input
+                value={vipForm.description}
+                onChangeText={(t) => setVipForm((f) => ({ ...f, description: t }))}
+                placeholder="e.g. Great view of the stage"
+                containerStyle={[styles.editInput, { borderColor: theme.colors.border, marginBottom: 12 }]}
+                style={{ color: theme.colors.foreground }}
+                placeholderTextColor={theme.colors.mutedForeground}
+              />
+            </>
+          )}
+          <Button
+            variant="solid"
+            tone="cyan"
+            onPress={async () => {
+              if (!vipForm.name.trim() || vipSaving) return
+              setVipSaving(true)
+              try {
+                if (vipSheetMode === "edit" && table.vipTableId) {
+                  const payload: Record<string, unknown> = {
+                    name: vipForm.name.trim(),
+                    capacity: vipForm.capacity,
+                  }
+                  if (vipSheetType === "bidding") {
+                    payload.currentBid = vipForm.currentBid
+                    payload.leader = vipForm.leader.trim() || undefined
+                    payload.nextBidAmount = vipForm.nextBidAmount
+                  } else {
+                    payload.minSpend = vipForm.minSpend
+                    payload.description = vipForm.description.trim() || undefined
+                  }
+                  await api.patch(`/api/vip-tables/${table.vipTableId}`, payload)
+                } else {
+                  const payload: Record<string, unknown> = {
+                    type: vipSheetType,
+                    name: vipForm.name.trim(),
+                    capacity: vipForm.capacity,
+                    mapTableId: table.id,
+                  }
+                  if (vipSheetType === "bidding") {
+                    payload.currentBid = vipForm.currentBid
+                    payload.leader = vipForm.leader.trim() || undefined
+                    payload.nextBidAmount = vipForm.nextBidAmount
+                  } else {
+                    payload.minSpend = vipForm.minSpend
+                    payload.description = vipForm.description.trim() || undefined
+                  }
+                  await api.post("/api/vip-tables", payload)
+                }
+                onRefetchTables?.()
+                setShowVipSheet(false)
+              } catch {
+                // keep sheet open; could toast
+              } finally {
+                setVipSaving(false)
+              }
+            }}
+            disabled={vipSaving || !vipForm.name.trim()}
+          >
+            <Text style={{ color: theme.colors.neonCyan, fontFamily: "Inter_600SemiBold" }}>{vipSaving ? "Saving…" : "Save"}</Text>
+          </Button>
+        </ScrollView>
+      </ModalSheet>
       <AlertDialog
         open={pendingBottleAdd !== null}
         onClose={() => setPendingBottleAdd(null)}
@@ -2932,7 +3244,7 @@ function EditTableSheet({
             <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Table number</Text>
             <Input
               value={number}
-              onChangeText={setNumber}
+              onChangeText={(text) => setNumber(text.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="e.g. 5"
               containerStyle={[styles.editInput, { borderColor: theme.colors.border }]}
@@ -2943,7 +3255,7 @@ function EditTableSheet({
             <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Capacity</Text>
             <Input
               value={capacity}
-              onChangeText={setCapacity}
+              onChangeText={(text) => setCapacity(text.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="e.g. 12"
               containerStyle={[styles.editInput, { borderColor: theme.colors.border }]}
@@ -2954,7 +3266,7 @@ function EditTableSheet({
             <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Current guests</Text>
             <Input
               value={currentGuests}
-              onChangeText={setCurrentGuests}
+              onChangeText={(text) => setCurrentGuests(text.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="e.g. 10"
               containerStyle={[styles.editInput, { borderColor: theme.colors.border }]}
@@ -3002,7 +3314,7 @@ function EditTableSheet({
             <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Spend ($)</Text>
             <Input
               value={spend}
-              onChangeText={setSpend}
+              onChangeText={(text) => setSpend(text.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="e.g. 1200"
               containerStyle={[styles.editInput, { borderColor: theme.colors.border }]}
@@ -3013,7 +3325,7 @@ function EditTableSheet({
             <Text style={[styles.editLabel, { color: theme.colors.mutedForeground }]}>Pending spend ($)</Text>
             <Input
               value={pendingSpend}
-              onChangeText={setPendingSpend}
+              onChangeText={(text) => setPendingSpend(text.replace(/[^0-9]/g, ""))}
               keyboardType="number-pad"
               placeholder="e.g. 600"
               containerStyle={[styles.editInput, { borderColor: theme.colors.border }]}
@@ -3439,14 +3751,14 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                         <Input
                           value={item.price}
                           containerStyle={styles.menuInputContainer}
-                          onChangeText={(text) => updateTableItem(item.id, { price: text })}
+                          onChangeText={(text) => updateTableItem(item.id, { price: text.replace(/[^0-9]/g, "") })}
                           placeholder="Price"
                           style={[styles.menuEditInput, { color: theme.colors.neonOrange }]}
                           placeholderTextColor={theme.colors.mutedForeground}
                         />
                         <Input
                           value={item.capacity ?? ""}
-                          onChangeText={(text) => updateTableItem(item.id, { capacity: text || undefined })}
+                          onChangeText={(text) => updateTableItem(item.id, { capacity: text.replace(/[^0-9]/g, "") || undefined })}
                           placeholder="Capacity (COVERS 6 GUESTS)"
                           containerStyle={styles.menuInputContainer}
                           style={[styles.menuEditInput, { color: theme.colors.neonGreen }]}
@@ -3456,9 +3768,11 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                           value={item.desc ?? ""}
                           onChangeText={(text) => updateTableItem(item.id, { desc: text || undefined })}
                           placeholder="Description"
-                          containerStyle={styles.menuInputContainer}
-                          style={[styles.menuEditInput, { color: theme.colors.mutedForeground }]}
+                          containerStyle={[styles.menuInputContainer, { height: 88, minHeight: 88, alignItems: "flex-start", paddingTop: 12, justifyContent: "flex-start" }]}
+                          style={[styles.menuEditInput, { color: theme.colors.mutedForeground, minHeight: 64 }]}
                           placeholderTextColor={theme.colors.mutedForeground}
+                          multiline
+                          numberOfLines={3}
                         />
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <HapticPressable
@@ -3535,7 +3849,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                                   <>
                                     <Input
                                       value={item.discountPrice ?? ""}
-                                      onChangeText={(text) => updateTableItem(item.id, { discountPrice: text || undefined })}
+                                      onChangeText={(text) => updateTableItem(item.id, { discountPrice: text.replace(/[^0-9]/g, "") || undefined })}
                                       placeholder="Discount price"
                                       containerStyle={styles.menuInputContainer}
                                       style={[styles.menuEditInput, { color: theme.colors.neonGreen }]}
@@ -3725,9 +4039,11 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                           value={item.desc ?? ""}
                           onChangeText={(text) => updateBarItem(item.id, { desc: text || undefined })}
                           placeholder="Description"
-                          containerStyle={styles.menuInputContainer}
-                          style={[styles.menuEditInput, { color: theme.colors.mutedForeground }]}
+                          containerStyle={[styles.menuInputContainer, { height: 88, minHeight: 88, alignItems: "flex-start", paddingTop: 12, justifyContent: "flex-start" }]}
+                          style={[styles.menuEditInput, { color: theme.colors.mutedForeground, minHeight: 64 }]}
                           placeholderTextColor={theme.colors.mutedForeground}
+                          multiline
+                          numberOfLines={3}
                         />
                         <View style={{ flexDirection: "row", alignItems: "center", gap: 8, flexWrap: "wrap" }}>
                           <HapticPressable
@@ -3750,7 +4066,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                           </HapticPressable>
                           <Input
                             value={item.price}
-                            onChangeText={(text) => updateBarItem(item.id, { price: text })}
+                            onChangeText={(text) => updateBarItem(item.id, { price: text.replace(/[^0-9]/g, "") })}
                             placeholder="Price"
                             containerStyle={[styles.menuInputContainer, { flex: 1, minWidth: 80 }]}
                             style={[styles.menuEditInput, { color: theme.colors.neonOrange }]}
@@ -3812,7 +4128,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
                                   <>
                                     <Input
                                       value={item.discountPrice ?? ""}
-                                      onChangeText={(text) => updateBarItem(item.id, { discountPrice: text || undefined })}
+                                      onChangeText={(text) => updateBarItem(item.id, { discountPrice: text.replace(/[^0-9]/g, "") || undefined })}
                                       placeholder="Discount price"
                                       containerStyle={styles.menuInputContainer}
                                       style={[styles.menuEditInput, { color: theme.colors.neonGreen }]}
@@ -3948,10 +4264,7 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
           UPDATE DETECTED
         </Text>
         <Text style={{ color: theme.colors.mutedForeground, fontSize: 14, textAlign: "center" }}>
-          You've made changes to the menu.
-        </Text>
-        <Text style={{ color: theme.colors.mutedForeground, fontSize: 14, textAlign: "center" }}>
-          Changes will be applied immediately.
+          Send push notification to all active users?
         </Text>
         <View style={{ flexDirection: "row", gap: 12, width: "100%", marginTop: 8 }}>
           <Button
@@ -3960,10 +4273,40 @@ function MainBarSpecialsSheet({ onClose }: { onClose: () => void }) {
             style={{ flex: 1 }}
             onPress={() => {
               setShowUpdateDetectedDialog(false)
-              toast({ title: "Saved", description: "Changes saved silently." })
+              toast({ title: "Saved", description: "Saved silently." })
             }}
           >
-            <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>OK</Text>
+            <Text style={{ color: theme.colors.foreground, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>No</Text>
+          </Button>
+          <Button
+            tone="cyan"
+            style={{ flex: 1 }}
+            onPress={async () => {
+              setShowUpdateDetectedDialog(false)
+              try {
+                if (isApiConnected()) {
+                  await api.post("/api/push/send-all", {
+                    title: "Menu updated",
+                    body: "Table or bar menu has been updated. Check it out!",
+                    data: { screen: "menu" },
+                  })
+                  toast({ title: "Notification sent", description: "Push notification sent to all users." })
+                } else {
+                  toast({ title: "Saved", description: "Backend not connected. Saved silently." })
+                }
+              } catch (e: unknown) {
+                const err = e as { status?: number; body?: string }
+                const msg =
+                  err?.status === 403
+                    ? "You don't have permission to send push notifications."
+                    : err?.status === 503
+                      ? "Push notifications are not configured."
+                      : (err?.body as string) || (e instanceof Error ? e.message : "Failed to send notification.")
+                toast({ title: "Notification failed", description: msg, variant: "destructive" })
+              }
+            }}
+          >
+            <Text style={{ color: theme.colors.background, fontFamily: "Inter_600SemiBold", fontSize: 12 }}>Yes</Text>
           </Button>
         </View>
       </View>

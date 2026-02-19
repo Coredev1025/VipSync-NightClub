@@ -185,6 +185,7 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
 
   const displayDjName = currentEvent?.djName || vibe.djName
   const displayGenres = currentEvent?.genres || vibe.genres
+  const hasCurrentVibe = Boolean(displayDjName?.trim() || displayGenres?.trim() || vibe.djStatus !== "OFF DECKS")
   const displayInitials =
     (displayDjName || "")
       .split(" ")
@@ -270,34 +271,36 @@ export function StaffHomeTab({ userRole }: { userRole?: "promoter" | "manager" |
               <NeonAvatar fallback={displayInitials} size="xl" glow="purple" showPulse showRing />
               <View style={{ flex: 1, minWidth: 0 }}>
                 <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 16 }} numberOfLines={1}>
-                  {displayDjName}
+                  {hasCurrentVibe ? (displayDjName || "DJ") : "No vibe"}
                 </Text>
                 <View style={{ flexDirection: "row", alignItems: "center", gap: 6, marginTop: 4 }}>
                   <Music size={14} color={theme.colors.mutedForeground} />
                   <Text style={{ color: theme.colors.mutedForeground, fontSize: 13 }}>
-                    {displayGenres}
+                    {hasCurrentVibe ? (displayGenres || "—") : "Set the vibe in this card"}
                   </Text>
                 </View>
               </View>
               <View style={{ flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
-                <HapticPressable
-                  onPress={handleToggleDecks}
-                  accessibilityLabel={vibe.djStatus === "ON DECKS" ? "Set off decks" : "Set on decks"}
-                >
-                  <Badge
-                    tone={
-                      vibe.djStatus === "ON DECKS"
-                        ? "pink"
-                        : vibe.djStatus === "SCHEDULED"
-                          ? "cyan"
-                          : vibe.djStatus === "BREAK"
-                            ? "orange"
-                            : "neutral"
-                    }
+                {hasCurrentVibe ? (
+                  <HapticPressable
+                    onPress={handleToggleDecks}
+                    accessibilityLabel={vibe.djStatus === "ON DECKS" ? "Set off decks" : "Set on decks"}
                   >
-                    {vibe.djStatus}
-                  </Badge>
-                </HapticPressable>
+                    <Badge
+                      tone={
+                        vibe.djStatus === "ON DECKS"
+                          ? "pink"
+                          : vibe.djStatus === "SCHEDULED"
+                            ? "cyan"
+                            : vibe.djStatus === "BREAK"
+                              ? "orange"
+                              : "neutral"
+                      }
+                    >
+                      {vibe.djStatus}
+                    </Badge>
+                  </HapticPressable>
+                ) : null}
               </View>
             </View>
           </Card>

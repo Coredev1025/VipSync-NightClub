@@ -146,6 +146,17 @@ export function GuestHomeTab() {
   )
   const homeEvents: HomeEvent[] = eventsFromVibe.length > 0 ? eventsFromVibe : homeEventsFallback
 
+  const currentVibeDj = vibeCtx?.vibe?.djName?.trim()
+  const currentVibeGenres = vibeCtx?.vibe?.genres?.trim()
+  const currentLiveEvent = vibeCtx?.vibeEvents?.find((e) => e.status === "live") ?? vibeCtx?.vibeEvents?.[0]
+  const hasCurrentVibe = Boolean(
+    currentVibeDj ||
+    currentVibeGenres ||
+    currentLiveEvent?.djName
+  )
+  const displayVibeName = currentLiveEvent?.djName || currentVibeDj || ""
+  const displayVibeGenres = currentLiveEvent?.genres || currentVibeGenres || ""
+
   const openBidSheet = React.useCallback((table: FeaturedTable) => {
     setBiddingTable(table)
     setBidAmount("")
@@ -168,8 +179,23 @@ export function GuestHomeTab() {
       return
     }
     try {
-      await api.post<{ ok: boolean }>(`/api/guest/vip-tables/${biddingTable.id}/bid`, { amount })
+      const res = await api.post<{ ok: boolean; newBid?: number; leader?: string; nextBidAmount?: number }>(
+        `/api/guest/vip-tables/${biddingTable.id}/bid`,
+        { amount }
+      )
       setTableBids((prev) => ({ ...prev, [biddingTable.id]: amount }))
+      setVipBidding((prev) =>
+        prev.map((t) =>
+          t.id === biddingTable.id
+            ? {
+                ...t,
+                currentBid: res?.newBid ?? amount,
+                leader: res?.leader ?? "You",
+                nextBidAmount: res?.nextBidAmount ?? t.nextBidAmount,
+              }
+            : t
+        )
+      )
       toast({
         title: "Bid placed",
         description: `${biddingTable.name}: ${formatNumber(amount, { prefix: "$" })}. We'll notify you if your bid is accepted.`,
@@ -265,27 +291,34 @@ export function GuestHomeTab() {
             <Animated.View entering={FadeInDown.delay(100).duration(300).springify()}>
               <Card variant="glass" style={{ padding: 14, borderColor: `${theme.colors.neonPurple}55` }}>
               <View style={{ flexDirection: "row", gap: 12, alignItems: "center" }}>
-                <NeonAvatar fallback="DK" size="xl" glow="purple" showPulse showRing />
+                <NeonAvatar
+                  fallback={hasCurrentVibe ? (displayVibeName.slice(0, 2).toUpperCase() || "DJ") : "—"}
+                  size="xl"
+                  glow="purple"
+                  showPulse={hasCurrentVibe}
+                  showRing={hasCurrentVibe}
+                />
                 <View style={{ flex: 1, minWidth: 0 }}>
                   <View style={{ flexDirection: "row", justifyContent: "space-between", gap: 10 }}>
                     <Text style={{ color: theme.colors.foreground, fontFamily: "Orbitron_900Black", fontSize: 16 }} numberOfLines={1}>
-                      DJ KHALED
+                      {hasCurrentVibe ? (displayVibeName || "DJ") : "No vibe"}
                     </Text>
-                    <Badge tone="pink">ON DECKS</Badge>
+                    {hasCurrentVibe ? <Badge tone="pink">ON DECKS</Badge> : null}
                   </View>
                   <Text style={{ color: theme.colors.mutedForeground, marginTop: 4 }}>
-                    Deep House • Techno
+                    {hasCurrentVibe ? (displayVibeGenres || "—") : "No current vibe set"}
                   </Text>
-                  <View style={{ marginTop: 10 }}>
-                    <Button
-                      variant="outline"
-                      tone={follows.djKhaled ? "pink" : "neutral"}
-                      style={{ borderRadius: 999 }}
-                      onPress={() => {
+                  {hasCurrentVibe ? (
+                    <View style={{ marginTop: 10 }}>
+                      <Button
+                        variant="outline"
+                        tone={follows.djKhaled ? "pink" : "neutral"}
+                        style={{ borderRadius: 999 }}
+                        onPress={() => {
                         const next = !follows.djKhaled
                         setFollows((prev) => ({ ...prev, djKhaled: next }))
                         toast({
-                          title: next ? "Following DJ Khaled" : "Unfollowed DJ Khaled",
+                          title: next ? "Following" : "Unfollowed",
                           description: next
                             ? "You’ll see updates on the Home vibe feed."
                             : "No more updates from this DJ.",
@@ -301,7 +334,8 @@ export function GuestHomeTab() {
                         <Text style={{ color: theme.colors.neonPink, fontFamily: "Orbitron_900Black" }}>+ FOLLOW</Text>
                       )}
                     </Button>
-                  </View>
+                    </View>
+                  ) : null}
                 </View>
               </View>
               </Card>
@@ -458,7 +492,7 @@ export function GuestHomeTab() {
               <Text style={{ color: theme.colors.mutedForeground, fontSize: 12, marginBottom: 6 }}>Your bid amount</Text>
               <Input
                 value={bidAmount}
-                onChangeText={setBidAmount}
+                onChangeText={(text) => setBidAmount(text.replace(/[^0-9]/g, ""))}
                 placeholder={`e.g. ${biddingTable.minSpend}`}
                 keyboardType="number-pad"
                 containerStyle={{ borderColor: theme.colors.border, borderRadius: 12 }}

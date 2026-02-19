@@ -35,6 +35,10 @@ export function canManageBottlesAndStock(role) {
   return role === "manager" || role === "owner"
 }
 
+export function canSendPush(role) {
+  return role === "manager" || role === "owner"
+}
+
 export function getProRoleFromPayload(proRole) {
   if (!proRole) return undefined
   const r = proRole.toLowerCase()

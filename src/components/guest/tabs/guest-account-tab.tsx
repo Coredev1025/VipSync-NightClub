@@ -5,6 +5,7 @@ import {
     ArrowLeft,
     ChevronRight,
     Copy,
+    Flame,
     Gift,
     HelpCircle,
     Loader2,
@@ -47,7 +48,7 @@ interface GuestPrivacyPrefs {
 }
 
 const DEFAULT_GUEST_ACCOUNT: GuestAccountData = {
-  displayName: "Guest",
+  displayName: "",
   email: "",
   avatarUri: "",
 }
@@ -84,20 +85,37 @@ function AnimatedLoaderIcon() {
 }
 
 function getInitials(name: string): string {
+  if (!name?.trim()) return ""
   return name
     .trim()
     .split(/\s+/)
     .map((s) => s[0])
     .join("")
     .toUpperCase()
-    .slice(0, 2) || "GU"
+    .slice(0, 2)
+}
+
+/** Activity level for badge: derived from profile for now; can be wired to API later. */
+type ActivityLevel = "new" | "active" | "regular" | "vip"
+
+function getActivityLevel(displayName: string): ActivityLevel {
+  if (!displayName?.trim()) return "new"
+  // TODO: replace with API-driven logic (e.g. visit count, last_active_at)
+  return "active"
+}
+
+const ACTIVITY_LABELS: Record<ActivityLevel, string> = {
+  new: "New",
+  active: "Active",
+  regular: "Regular",
+  vip: "VIP",
 }
 
 export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
   const { toast } = useToast()
   const { theme } = useTheme()
   const insets = useSafeAreaInsets()
-  const [heroName, setHeroName] = React.useState<string>(DEFAULT_GUEST_ACCOUNT.displayName)
+  const [heroName, setHeroName] = React.useState<string>("")
   const [showLogoutConfirm, setShowLogoutConfirm] = React.useState(false)
   const [settingsOpen, setSettingsOpen] = React.useState(false)
   const [settingsSection, setSettingsSection] = React.useState<GuestSettingsSection>("account")
@@ -117,12 +135,11 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
         const settings = profile.settings_account as Partial<GuestAccountData> | undefined
         const nameFromSettings = (settings?.displayName as string | undefined)?.trim()
         const nameFromProfile = (profile.name as string | undefined)?.trim()
-        const nextName = nameFromSettings || nameFromProfile || DEFAULT_GUEST_ACCOUNT.displayName
-        setHeroName(nextName)
+        setHeroName(nameFromSettings || nameFromProfile || "")
       })
       .catch(() => {
         if (!isMounted) return
-        setHeroName(DEFAULT_GUEST_ACCOUNT.displayName)
+        setHeroName("")
       })
     return () => {
       isMounted = false
@@ -177,7 +194,7 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
                       },
                     ]}
                   >
-                    <User size={12} color={theme.colors.neonCyan} />
+                    <Flame size={12} color={theme.colors.neonCyan} />
                     <Text
                       style={{
                         color: theme.colors.neonCyan,
@@ -185,7 +202,7 @@ export function GuestAccountTab({ onLogout }: { onLogout?: () => void }) {
                         fontSize: 12,
                       }}
                     >
-                      Guest
+                      {ACTIVITY_LABELS[getActivityLevel(heroName)]}
                     </Text>
                   </View>
                 </View>
@@ -476,14 +493,16 @@ function GuestSettingsSheetContent({
 async function loadGuestAccount(): Promise<GuestAccountData> {
   const profile = await getProfile()
   const fromApi = profile?.settings_account as Partial<GuestAccountData> | undefined
-  if (fromApi && typeof fromApi === "object") {
-    return {
-      displayName: (fromApi.displayName as string) ?? DEFAULT_GUEST_ACCOUNT.displayName,
-      email: (fromApi.email as string) ?? "",
-      avatarUri: (fromApi.avatarUri as string) ?? "",
-    }
+  const nameFromSettings = (fromApi?.displayName as string | undefined)?.trim()
+  const nameFromProfile = (profile?.name as string | undefined)?.trim()
+  const displayName = nameFromSettings || nameFromProfile || ""
+  const email = (fromApi?.email as string | undefined)?.trim() || (profile?.email as string | undefined)?.trim() || ""
+  const avatarUri = (fromApi?.avatarUri as string | undefined)?.trim() || ""
+  return {
+    displayName,
+    email,
+    avatarUri,
   }
-  return { ...DEFAULT_GUEST_ACCOUNT }
 }
 
 function GuestAccountSettingsContent({
@@ -492,8 +511,8 @@ function GuestAccountSettingsContent({
   toast: (opts: { title: string; description?: string }) => void
 }) {
   const { theme } = useTheme()
-  const [displayName, setDisplayName] = React.useState(DEFAULT_GUEST_ACCOUNT.displayName)
-  const [avatarUri, setAvatarUri] = React.useState<string>(DEFAULT_GUEST_ACCOUNT.avatarUri ?? "")
+  const [displayName, setDisplayName] = React.useState("")
+  const [avatarUri, setAvatarUri] = React.useState<string>("")
   const [saving, setSaving] = React.useState(false)
 
   React.useEffect(() => {
@@ -565,7 +584,7 @@ function GuestAccountSettingsContent({
                   <Text
                     style={[styles.avatarPlaceholderInitials, { color: theme.colors.mutedForeground }]}
                   >
-                    {getInitials(displayName)}
+                    {getInitials(displayName) || "?"}
                   </Text>
                 </View>
               )}

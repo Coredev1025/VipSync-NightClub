@@ -10,10 +10,18 @@ try {
 
 const appJson = require("./app.json");
 
+let plugins = [...(Array.isArray(appJson.expo?.plugins) ? appJson.expo.plugins : [])].filter(Boolean);
+// Replace simple "expo-notifications" with configured version for Android default channel
+const hasNotifications = plugins.some((p) => (Array.isArray(p) ? p[0] === "expo-notifications" : p === "expo-notifications"));
+if (hasNotifications) {
+  plugins = plugins.filter((p) => (Array.isArray(p) ? p[0] : p) !== "expo-notifications");
+}
+plugins.push(["expo-notifications", { defaultChannel: "default" }]);
+
 module.exports = {
   expo: {
     ...appJson.expo,
-    plugins: [...(Array.isArray(appJson.expo?.plugins) ? appJson.expo.plugins : [])].filter(Boolean),
+    plugins,
     extra: {
       ...appJson.expo.extra,
       /** Backend API URL. From .env: EXPO_PUBLIC_API_URL */

@@ -19,7 +19,7 @@ import {
     Orbitron_900Black,
 } from "@expo-google-fonts/orbitron"
 
-import { ApiAuthContext } from "@/contexts/api-auth-context"
+import { ApiAuthContext, useApiAuth } from "@/contexts/api-auth-context"
 import { BottlesProvider } from "@/contexts/bottles-context"
 import { ChatsProvider } from "@/contexts/chats-context"
 import { LiveFeedProvider } from "@/contexts/live-feed-context"
@@ -27,6 +27,7 @@ import { MenuProvider } from "@/contexts/menu-context"
 import { TablesProvider } from "@/contexts/tables-context"
 import { VibeProvider } from "@/contexts/vibe-context"
 import { checkApiReachable, getApiBaseUrl, isApiConnected, setAccessToken } from "@/lib/api"
+import { registerPushToken, setupNotificationListeners } from "@/lib/push-notifications"
 import { syncBackendSession } from "@/lib/google-oauth"
 import { supabase } from "@/lib/supabase"
 import { ToastProvider, useToast } from "@/providers/toast-provider"
@@ -135,6 +136,31 @@ function AuthSyncListener({
   return null
 }
 
+function PushNotificationSync() {
+  const { hasBackendToken } = useApiAuth()
+
+  React.useEffect(() => {
+    if (!hasBackendToken) return
+    registerPushToken()
+  }, [hasBackendToken])
+
+  React.useEffect(() => {
+    const unsub = setupNotificationListeners(
+      undefined,
+      (response) => {
+        const data = response.notification.request.content.data
+        if (data?.screen) {
+          // Could use router.push(data.screen) for deep linking
+          if (__DEV__) console.log("[Push] Open screen:", data.screen, data)
+        }
+      }
+    )
+    return unsub
+  }, [])
+
+  return null
+}
+
 export function AppProviders({ children }: AppProvidersProps) {
   const [hasBackendToken, setHasBackendToken] = React.useState(false)
 
@@ -186,6 +212,7 @@ export function AppProviders({ children }: AppProvidersProps) {
                     <LiveFeedProvider>
                       <ToastProvider>
                         <AuthSyncListener setHasBackendToken={setHasBackendToken} />
+                        <PushNotificationSync />
                         {children}
                       </ToastProvider>
                     </LiveFeedProvider>

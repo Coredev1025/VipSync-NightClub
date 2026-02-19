@@ -4,6 +4,20 @@ import { api, getAccessToken, isApiConnected } from "@/lib/api"
 
 export type TableStatus = "open" | "occupied" | "booked" | "pending"
 
+/** User-mode bidding state when this map table is linked to a VIP bidding table. */
+export interface TableVipBidding {
+  vipName: string
+  currentBid: number
+  leader: string
+  nextBidAmount: number
+}
+
+/** User-mode booking info when this map table is linked to a VIP booking table. */
+export interface TableVipBooking {
+  vipName: string
+  minSpend: number
+}
+
 export interface Table {
   id: string
   number: number
@@ -28,6 +42,14 @@ export interface Table {
   isVip?: boolean
   isDjBooth?: boolean
   djSetTime?: string
+  /** Set when this table is linked to a VIP bidding table (user mode). */
+  vipBidding?: TableVipBidding
+  /** Set when this table is linked to a VIP booking table (user mode). */
+  vipBooking?: TableVipBooking
+  /** Manager: VIP table record id for edit/delete. */
+  vipTableId?: string
+  /** Manager: "bidding" | "booking". */
+  vipType?: "bidding" | "booking"
 }
 
 export type TableUpdate = Partial<Omit<Table, "id">>

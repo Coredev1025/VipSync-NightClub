@@ -7,6 +7,20 @@ const router = Router()
 router.use(authMiddleware)
 const VENUE_ID = "default"
 
+/** Insert a live feed item so bid/booking from user mode appears in the ops feed. */
+async function addLiveFeedItem({ type, title, description, tableNumber }) {
+  const now = new Date()
+  const timeStr = now.toLocaleTimeString(undefined, { hour: "2-digit", minute: "2-digit" })
+  await supabase.from("live_feed_items").insert({
+    type,
+    title,
+    description,
+    time: timeStr,
+    table: tableNumber ?? null,
+    created_at: now.toISOString(),
+  })
+}
+
 router.get("/featured-tables", async (_req, res) => {
   const { data, error } = await supabase
     .from("featured_tables")
@@ -38,7 +52,39 @@ router.get("/vip-tables", async (_req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
-  const bidding = (data ?? [])
+  const vipRows = data ?? []
+  const needMapTable = vipRows.filter((r) => !r.map_table_id)
+  for (const vip of needMapTable) {
+    const { data: maxRow } = await supabase
+      .from("map_tables")
+      .select("number")
+      .eq("venue_id", VENUE_ID)
+      .order("number", { ascending: false })
+      .limit(1)
+      .maybeSingle()
+    const nextNumber = (maxRow?.number ?? 0) + 1
+    const now = new Date().toISOString()
+    const { data: newMap, error: insertErr } = await supabase
+      .from("map_tables")
+      .insert({
+        venue_id: VENUE_ID,
+        number: nextNumber,
+        x: 0,
+        y: 0,
+        status: "open",
+        capacity: vip.capacity ?? 6,
+        current_guests: 0,
+        is_vip: true,
+        created_at: now,
+        updated_at: now,
+      })
+      .select("id")
+      .single()
+    if (!insertErr && newMap?.id) {
+      await supabase.from("vip_tables").update({ map_table_id: newMap.id, updated_at: now }).eq("id", vip.id)
+    }
+  }
+  const bidding = vipRows
     .filter((r) => r.type === "bidding")
     .map((r) => ({
       id: r.id,
@@ -49,7 +95,7 @@ router.get("/vip-tables", async (_req, res) => {
       leader: r.leader ?? undefined,
       nextBidAmount: r.next_bid_amount != null ? Number(r.next_bid_amount) : 0,
     }))
-  const booking = (data ?? [])
+  const booking = vipRows
     .filter((r) => r.type === "booking")
     .map((r) => ({
       id: r.id,
@@ -100,6 +146,26 @@ router.post("/vip-tables/:id/bid", async (req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
+  const { data: vipInfo } = await supabase
+    .from("vip_tables")
+    .select("name, map_table_id")
+    .eq("id", req.params.id)
+    .single()
+  let tableNumber = null
+  if (vipInfo?.map_table_id) {
+    const { data: mapRow } = await supabase
+      .from("map_tables")
+      .select("number")
+      .eq("id", vipInfo.map_table_id)
+      .single()
+    if (mapRow?.number != null) tableNumber = mapRow.number
+  }
+  await addLiveFeedItem({
+    type: "order",
+    title: "Bid placed",
+    description: `${vipInfo?.name ?? "VIP table"}: $${amount.toLocaleString()} by ${leaderName}`,
+    tableNumber,
+  })
   res.json({ ok: true, newBid: amount, leader: leaderName, nextBidAmount: nextBid })
 })
 
@@ -124,7 +190,7 @@ router.post("/vip-tables/:id/book", async (req, res) => {
     res.status(400).json({ error: "Table not linked to floor plan" })
     return
   }
-  const guestName = (req.body && req.body.guestName) || req.user?.name || req.user?.sub || "Guest"
+  const guestName = (req.body && req.body.guestName) || req.user?.name || req.user?.sub
   const { error: updateErr } = await supabase
     .from("map_tables")
     .update({
@@ -138,6 +204,19 @@ router.post("/vip-tables/:id/book", async (req, res) => {
     res.status(500).json({ error: updateErr.message })
     return
   }
+  let tableNumber = null
+  const { data: mapRow } = await supabase
+    .from("map_tables")
+    .select("number")
+    .eq("id", mapTableId)
+    .single()
+  if (mapRow?.number != null) tableNumber = mapRow.number
+  await addLiveFeedItem({
+    type: "arrival",
+    title: "Table booked",
+    description: `Table ${tableNumber != null ? tableNumber : "VIP"} booked by ${guestName || "Guest"}`,
+    tableNumber,
+  })
   res.json({ ok: true, message: "Table booked" })
 })
 

@@ -38,8 +38,8 @@ const TableSchema = z.object({
 
 const VENUE_ID = "default"
 
-function rowToTable(r) {
-  return {
+function rowToTable(r, vip) {
+  const row = {
     id: r.id,
     number: r.number,
     x: r.x,
@@ -64,15 +64,47 @@ function rowToTable(r) {
     isDjBooth: r.is_dj_booth ?? undefined,
     djSetTime: r.dj_set_time ?? undefined,
   }
+  if (vip) {
+    row.vipTableId = vip.id
+    row.vipType = vip.type
+    if (vip.type === "bidding") {
+      row.vipBidding = {
+        vipName: vip.name,
+        currentBid: vip.current_bid != null ? Number(vip.current_bid) : 0,
+        leader: vip.leader ?? "",
+        nextBidAmount: vip.next_bid_amount != null ? Number(vip.next_bid_amount) : 0,
+      }
+    } else if (vip.type === "booking") {
+      row.vipBooking = {
+        vipName: vip.name,
+        minSpend: vip.min_spend != null ? Number(vip.min_spend) : 0,
+      }
+    }
+  }
+  return row
 }
 
 router.get("/", async (req, res) => {
-  const { data, error } = await supabase.from("map_tables").select("*").eq("venue_id", VENUE_ID)
+  const { data: mapData, error } = await supabase.from("map_tables").select("*").eq("venue_id", VENUE_ID)
   if (error) {
     res.status(500).json({ error: error.message })
     return
   }
-  res.json({ tables: (data ?? []).map(rowToTable) })
+  const mapRows = mapData ?? []
+  const mapIds = mapRows.map((m) => m.id).filter(Boolean)
+  let vipByMapId = {}
+  if (mapIds.length > 0) {
+    const { data: vipData } = await supabase
+      .from("vip_tables")
+      .select("id, map_table_id, type, name, current_bid, leader, next_bid_amount, min_spend")
+      .eq("venue_id", VENUE_ID)
+      .in("map_table_id", mapIds)
+    if (vipData?.length) {
+      vipByMapId = Object.fromEntries(vipData.map((v) => [v.map_table_id, v]))
+    }
+  }
+  const tables = mapRows.map((r) => rowToTable(r, vipByMapId[r.id]))
+  res.json({ tables })
 })
 
 router.post("/", requireEditMap, async (req, res) => {
@@ -169,7 +201,13 @@ router.patch("/:id", requireEditMap, async (req, res) => {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
     return
   }
-  res.json(rowToTable(data))
+  const { data: vipRow } = await supabase
+    .from("vip_tables")
+    .select("type, name, current_bid, leader, next_bid_amount, min_spend")
+    .eq("map_table_id", data.id)
+    .eq("venue_id", VENUE_ID)
+    .maybeSingle()
+  res.json(rowToTable(data, vipRow ?? undefined))
 })
 
 router.delete("/:id", requireEditMap, async (req, res) => {
