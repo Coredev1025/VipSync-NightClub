@@ -211,7 +211,6 @@ router.post("/", async (req, res) => {
   res.status(201).json(chatRowToItem(data))
 })
 
-// GET /api/chats/:id/messages — paginated; requires participant
 router.get("/:id/messages", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -257,7 +256,6 @@ router.get("/:id/messages", async (req, res) => {
   res.json({ messages, total: count ?? messages.length })
 })
 
-// POST /api/chats/:id/messages — send message; requires participant
 router.post("/:id/messages", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -299,7 +297,6 @@ router.post("/:id/messages", async (req, res) => {
   })
 })
 
-// PATCH /api/chats/:id/messages/:msgId — requires participant
 router.patch("/:id/messages/:msgId", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -337,7 +334,6 @@ router.patch("/:id/messages/:msgId", async (req, res) => {
     id: data.id,
     msg: data.msg,
     time: data.created_at,
-    // Keep "me" flag consistent with GET /messages so edited messages stay on the correct side.
     me: data.sender_id ? data.sender_id === userId : data.me ?? false,
     sender_id: data.sender_id ?? undefined,
     sender: data.sender ?? undefined,
@@ -345,7 +341,6 @@ router.patch("/:id/messages/:msgId", async (req, res) => {
   })
 })
 
-// DELETE /api/chats/:id/messages — delete all messages in a chat; requires participant
 router.delete("/:id/messages", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -369,7 +364,6 @@ router.delete("/:id/messages", async (req, res) => {
   res.status(204).send()
 })
 
-// DELETE /api/chats/:id/messages/:msgId — requires participant
 router.delete("/:id/messages/:msgId", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -393,7 +387,6 @@ router.delete("/:id/messages/:msgId", async (req, res) => {
   res.status(204).send()
 })
 
-// POST /api/chats/:id/read — mark chat as read for current user
 router.post("/:id/read", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {
@@ -417,7 +410,6 @@ router.post("/:id/read", async (req, res) => {
   res.status(204).send()
 })
 
-// PATCH /api/chats/:id — update chat; requires participant
 router.patch("/:id", async (req, res) => {
   const access = await ensureCanAccessChat(req, res)
   if (!access) return
@@ -472,7 +464,6 @@ router.patch("/:id", async (req, res) => {
   )
 })
 
-// DELETE /api/chats/:id — requires participant
 router.delete("/:id", async (req, res) => {
   const access = await ensureCanAccessChat(req, res)
   if (!access) return

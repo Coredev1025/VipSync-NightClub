@@ -13,7 +13,6 @@ async function syncTableServiceLtoFromRow(row) {
     const start = row.limited_date_start
     const end = row.limited_date
 
-    // If no LTO configured, ensure any corresponding LTO row is removed.
     if (!limitedOffer || (!start && !end)) {
       await supabase
         .from("table_service_lto")
@@ -134,7 +133,7 @@ router.post("/", async (req, res) => {
     res.status(500).json({ error: error.message })
     return
   }
-  // Keep table_service_lto in sync when this item is an LTO.
+
   await syncTableServiceLtoFromRow(data)
   res.status(201).json(rowToTableItem(data))
 })
@@ -170,7 +169,7 @@ router.patch("/:id", async (req, res) => {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
     return
   }
-  // Sync or clear any associated LTO row based on updated values.
+
   await syncTableServiceLtoFromRow(data)
   res.json(rowToTableItem(data))
 })
@@ -185,7 +184,7 @@ router.delete("/:id", async (req, res) => {
     res.status(error.code === "PGRST116" ? 404 : 500).json({ error: error.message })
     return
   }
-  // Remove any matching LTO row for this table item.
+
   await supabase.from("table_service_lto").delete().eq("id", req.params.id).eq("venue_id", VENUE_ID)
   res.status(204).send()
 })

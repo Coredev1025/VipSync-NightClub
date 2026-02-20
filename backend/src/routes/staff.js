@@ -7,9 +7,6 @@ router.use(authMiddleware)
 
 const VENUE_ID = "default"
 
-/** GET /api/staff?role=promoter|bottle_girl
- * Returns list of staff for dropdowns. Promoters from profiles; bottle girls from venue_staff.
- */
 router.get("/", async (req, res) => {
   const role = req.query.role
   if (role === "promoter") {

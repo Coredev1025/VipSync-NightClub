@@ -132,7 +132,6 @@ router.delete("/:id", async (req, res) => {
   res.status(204).send()
 })
 
-/** GET /api/contacts/can-chat-with/:profileId — true only if both users have each other as contacts (mutual). */
 router.get("/can-chat-with/:profileId", async (req, res) => {
   const userId = req.user?.sub
   if (!userId) {

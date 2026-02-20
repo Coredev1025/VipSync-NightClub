@@ -1,10 +1,4 @@
-/**
- * Firebase Cloud Messaging (FCM) service for sending push notifications.
- * Requires FIREBASE_SERVICE_ACCOUNT_JSON or GOOGLE_APPLICATION_CREDENTIALS in backend .env.
- * Supports Android FCM tokens. iOS tokens (APNs) require Firebase iOS SDK; Expo's
- * getDevicePushTokenAsync returns APNs token on iOS - FCM may not deliver. Consider
- * using Expo Push Service for iOS or adding Firebase to your iOS app.
- */
+
 
 import { readFileSync } from "node:fs"
 import { resolve } from "node:path"
@@ -51,8 +45,8 @@ function initFcm() {
 }
 
 /**
- * Send a push notification to one or more FCM tokens.
- * @param {string[]} tokens - FCM registration tokens
+
+ * @param {string[]} tokens 
  * @param {{ title: string, body?: string, data?: Record<string, string> }} payload
  * @returns {{ successCount: number, failureCount: number, failedTokens?: string[] }}
  */
@@ -100,9 +94,6 @@ export async function sendToTokens(tokens, payload) {
   }
 }
 
-/**
- * Check if FCM is configured and ready to send.
- */
 export function isFcmConfigured() {
   return initFcm() != null
 }

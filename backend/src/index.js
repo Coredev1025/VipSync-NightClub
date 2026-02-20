@@ -26,7 +26,6 @@ import pushRoutes from "./routes/push.js"
 const app = express()
 const PORT = process.env.PORT ? parseInt(process.env.PORT, 10) : 3000
 
-// In-memory connection state: last request from any client (e.g. frontend) and total count
 const connectionState = {
   lastRequestAt: null,
   requestCount: 0,
@@ -36,7 +35,6 @@ const connectionState = {
 app.use(cors({ origin: true, credentials: true }))
 app.use(express.json())
 
-// Track every request to show backend ↔ frontend (or any client) activity
 app.use((req, _res, next) => {
   connectionState.lastRequestAt = new Date().toISOString()
   connectionState.requestCount += 1
@@ -44,7 +42,6 @@ app.use((req, _res, next) => {
     const bodyPreview = req.body && Object.keys(req.body).length ? JSON.stringify(req.body).slice(0, 200) : ""
     console.log(`[${new Date().toISOString()}] ${req.method} ${req.originalUrl}${bodyPreview ? ` — body: ${bodyPreview}` : ""}`)
   } catch (err) {
-    // ignore logging errors
   }
   next()
 })
@@ -74,7 +71,6 @@ app.get("/health", (_req, res) => {
   res.json({ ok: true })
 })
 
-/** Connection state: last request time and request count (any client, e.g. frontend). */
 app.get("/connection", (_req, res) => {
   res.json({
     ok: true,

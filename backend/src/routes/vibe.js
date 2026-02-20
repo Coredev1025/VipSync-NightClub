@@ -220,7 +220,6 @@ router.patch("/events/:id", requireManageVibeEvents, async (req, res) => {
         console.error("Failed to set current vibe from updated event", e)
       }
     } else {
-      // If this event is no longer live, clear it as the current vibe event if needed.
       try {
         await supabase
           .from("vibe")

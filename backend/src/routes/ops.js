@@ -28,7 +28,6 @@ router.get("/revenue", requireOps, async (req, res) => {
   const comparisonPrevious = goalRow?.comparison_previous_amount != null ? Number(goalRow.comparison_previous_amount) : null
   const comparisonLabel = goalRow?.comparison_label ?? "vs last Saturday"
 
-  // Current revenue = sum of (spend + pending_spend) from map_tables so add-bottle reflects immediately
   const { data: tables, error: tablesError } = await supabase
     .from("map_tables")
     .select("spend, pending_spend")

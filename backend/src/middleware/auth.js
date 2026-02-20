@@ -25,7 +25,6 @@ export function optionalAuth(req, res, next) {
     try {
       req.user = jwt.verify(token, JWT_SECRET)
     } catch {
-      // ignore
     }
   }
   next()

@@ -15,11 +15,6 @@ const RegisterSchema = z.object({
   platform: z.enum(["android", "ios"]).optional(),
 })
 
-/**
- * POST /api/push/register
- * Register FCM device token for the current user.
- * Body: { token: string, platform?: 'android' | 'ios' }
- */
 router.post("/register", async (req, res) => {
   const parsed = RegisterSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -61,11 +56,6 @@ const SendAllSchema = z.object({
   data: z.record(z.string()).optional(),
 })
 
-/**
- * POST /api/push/send-all
- * Send push notification to all registered users. Manager/Owner only.
- * Body: { title: string, body?: string, data?: Record<string, string> }
- */
 router.post("/send-all", requireSendPush, async (req, res) => {
   const parsed = SendAllSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -92,7 +82,6 @@ router.post("/send-all", requireSendPush, async (req, res) => {
     return
   }
 
-  // Prefer Android FCM tokens; iOS APNs tokens may not work with firebase-admin
   const tokens = (rows ?? [])
     .map((r) => r.token)
     .filter((t) => t && typeof t === "string")

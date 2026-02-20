@@ -1,7 +1,3 @@
-/**
- * Role-based permissions for VIPsync API.
- * Mirrors src/constants/role-permissions.ts; enforce on backend for all sensitive routes.
- */
 
 export function canManageClubSettings(role) {
   return role === "owner" || role === "manager"

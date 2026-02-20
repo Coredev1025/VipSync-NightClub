@@ -68,7 +68,6 @@ function vipRowToJson(r) {
   }
 }
 
-/** List VIP tables (manager) – optionally filter by mapTableId. */
 router.get("/", requireEditMap, async (req, res) => {
   let q = supabase.from("vip_tables").select("*").eq("venue_id", VENUE_ID).order("sort_order", { ascending: true })
   const mapTableId = req.query.mapTableId
@@ -81,7 +80,6 @@ router.get("/", requireEditMap, async (req, res) => {
   res.json({ vipTables: (data ?? []).map(vipRowToJson) })
 })
 
-/** Create VIP table (bidding or booking). If mapTableId omitted, create a new map_tables row and link it. */
 router.post("/", requireEditMap, async (req, res) => {
   const parsed = CreateVipSchema.safeParse(req.body)
   if (!parsed.success) {
@@ -170,7 +168,6 @@ router.post("/", requireEditMap, async (req, res) => {
   res.status(201).json(vipRowToJson(created))
 })
 
-/** Update VIP table (manager). */
 router.patch("/:id", requireEditMap, async (req, res) => {
   const { data: existing, error: fetchErr } = await supabase
     .from("vip_tables")
@@ -215,7 +212,6 @@ router.patch("/:id", requireEditMap, async (req, res) => {
   res.json(vipRowToJson(updated))
 })
 
-/** Delete VIP table (manager). Unlinks from map_tables; does not delete the map_tables row. */
 router.delete("/:id", requireEditMap, async (req, res) => {
   const { data: row, error: fetchErr } = await supabase
     .from("vip_tables")

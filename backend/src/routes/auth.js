@@ -29,7 +29,6 @@ const SupabaseBodySchema = z.object({
   access_token: z.string().min(1, "access_token is required"),
   mode: z.enum(["pro", "user"]).optional(),
   proRole: z.enum(["promoter", "door", "manager", "owner", "guest"]).optional(),
-  pro_role: z.enum(["promoter", "door", "manager", "owner", "guest"]).optional(),
 })
 
 router.post("/supabase", async (req, res) => {
@@ -40,13 +39,12 @@ router.post("/supabase", async (req, res) => {
     res.status(400).json({ error: msg })
     return
   }
-  let { access_token, mode: bodyMode, proRole: bodyProRole, pro_role: bodyProRoleSnake } = parsed.data
+  let { access_token, mode: bodyMode, proRole: bodyProRole } = parsed.data
   access_token = typeof access_token === "string" ? access_token.trim() : ""
   if (!access_token) {
     res.status(400).json({ error: "access_token required" })
     return
   }
-  const bodyProRoleResolved = bodyProRole ?? bodyProRoleSnake
   console.log("[Auth] Received token from frontend (length:", access_token.length, ")")
   if (!SUPABASE_URL) {
     res.status(503).json({
@@ -73,13 +71,12 @@ router.post("/supabase", async (req, res) => {
     res.status(401).json({ error: "Invalid Supabase token payload" })
     return
   }
-  // Supabase JWT: email at top level; name/picture often in user_metadata (OAuth/magic link)
+
   const userMeta = decoded.user_metadata ?? {}
   const email = decoded.email ?? userMeta.email ?? undefined
   const name = decoded.name ?? userMeta.name ?? userMeta.full_name ?? undefined
   const picture = decoded.picture ?? userMeta.picture ?? userMeta.avatar_url ?? userMeta.image ?? undefined
-  // Supabase JWT sub is auth.users.id (UUID). The trigger creates profile with id = Google sub, auth_id = UUID.
-  // Look up by auth_id first so we update the same profile and never create a duplicate for the same Gmail.
+
   console.log("[Auth] Token verified for user:", decoded.sub, "email:", email ?? "(none)")
   let existing = null
   const { data: byAuthId } = await supabase
@@ -100,10 +97,8 @@ router.post("/supabase", async (req, res) => {
 
   const profileId = existing?.id ?? decoded.sub
 
-  // New users: leave mode/pro_role null so app shows onboarding (mode → role → profile).
-  // Existing users: keep current or use body.
   const mode = bodyMode ?? existing?.mode ?? (existing ? undefined : null)
-  const proRole = bodyProRoleResolved ?? existing?.pro_role ?? (existing ? undefined : null)
+  const proRole = bodyProRole ?? existing?.pro_role ?? (existing ? undefined : null)
 
   const profileRow = {
     email,
